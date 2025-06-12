@@ -21,21 +21,25 @@ class ModeloAjustado:
     Modelo simplificado e robusto para previsão com dados limitados.
     
     Características:
-    1. Detecção e tratamento de outliers
+    1. Detecção e tratamento de outliers mais conservador
     2. Média móvel para suavização da tendência
-    3. Sazonalidade baseada em médias mensais com suavização
-    4. Garantia de valores positivos
+    3. Sazonalidade baseada em médias mensais com proteções contra valores extremos
+    4. Garantia de valores positivos com baseline mínima
     5. Limites superiores realistas
+    6. Validação robusta para evitar fatores sazonais problemáticos
     """
     
     def __init__(self, granularity: str = "M", 
                  seasonality_mode: str = "multiplicative",
-                 seasonal_smooth: float = 0.7,
-                 outlier_threshold: float = 2.5,
+                 seasonal_smooth: float = 0.5,  # Reduzido para menos suavização
+                 outlier_threshold: float = 3.0,  # Mais conservador
                  trend_window: int = 3,
                  confidence_level: float = 0.95,
                  confidence_factor: float = 0.7,
                  growth_factor: float = 1.0,
+                 min_seasonal_factor: float = 0.3,  # NOVO: Fator sazonal mínimo
+                 max_seasonal_factor: float = 3.0,  # NOVO: Fator sazonal máximo
+                 use_robust_stats: bool = True,  # NOVO: Usar estatísticas robustas
                  month_adjustments: Optional[Dict[int, float]] = None,
                  day_of_week_adjustments: Optional[Dict[int, float]] = None,
                  feriados_enabled: bool = True,
@@ -53,7 +57,9 @@ class ModeloAjustado:
             confidence_level: Nível de confiança (0.95 = 95%)
             confidence_factor: Fator de ajuste (menor = intervalos mais estreitos)
             growth_factor: Fator de crescimento global (1.0 = sem ajuste)
-            adjustment_factor: Fator de ajuste para controlar os valores previstos
+            min_seasonal_factor: Fator sazonal mínimo para modo multiplicativo
+            max_seasonal_factor: Fator sazonal máximo para modo multiplicativo
+            use_robust_stats: Se deve usar mediana ao invés de média (mais robusto)
             month_adjustments: Ajustes por mês {1: 1.2, 2: 0.9, ...}
         """
         if granularity not in FREQ_MAP:
@@ -70,9 +76,12 @@ class ModeloAjustado:
         self.trend_window = trend_window
         self.confidence_level = confidence_level
         self.confidence_factor = confidence_factor
-        self.growth_factor = growth_factor  # Fator de crescimento global (1.0 = sem ajuste)
-        self.month_adjustments = month_adjustments or {}  # Ajustes por mês {1: 1.2, 2: 0.9, ...}
-        self.day_of_week_adjustments = day_of_week_adjustments or {}  # Ajustes por dia da semana {0: 1.2, 1: 0.9, ...}
+        self.growth_factor = growth_factor
+        self.min_seasonal_factor = min_seasonal_factor
+        self.max_seasonal_factor = max_seasonal_factor
+        self.use_robust_stats = use_robust_stats
+        self.month_adjustments = month_adjustments or {}
+        self.day_of_week_adjustments = day_of_week_adjustments or {}
         self.models = {}
         
         # Configuração de feriados
@@ -105,6 +114,9 @@ class ModeloAjustado:
             "y": pd.to_numeric(demands, errors="coerce")
         }).dropna()
         
+        # Remover valores negativos (não fazem sentido para demanda)
+        df = df[df["y"] >= 0]
+        
         # Ordenar por data
         df = df.sort_values("ds")
         
@@ -114,8 +126,8 @@ class ModeloAjustado:
             logger.warning(f"Dados insuficientes após limpeza: apenas {len(df)} pontos válidos")
             return df
         
-        # Detecção e tratamento de outliers
-        if len(df) >= 5:  # Precisamos de alguns pontos para detectar outliers
+        # Detecção e tratamento de outliers mais conservador
+        if len(df) >= 10:  # Precisamos de mais pontos para detectar outliers com segurança
             z_scores = zscore(df["y"])
             outliers = abs(z_scores) > self.outlier_threshold
             
@@ -126,78 +138,139 @@ class ModeloAjustado:
                 # Criar cópia para tratamento
                 df_fixed = df.copy()
                 
-                # Substituir outliers pela média dos pontos vizinhos
+                # Substituir outliers de forma mais conservadora
                 for idx in outlier_indices:
-                    if idx > 0 and idx < len(df) - 1:
-                        # Média dos pontos vizinhos
-                        neighbors = [df["y"].iloc[idx-1], df["y"].iloc[idx+1]]
-                        replacement = sum(neighbors) / len(neighbors)
-                    elif idx == 0:
-                        # Primeiro ponto, usar o próximo
-                        replacement = df["y"].iloc[1]
-                    else:
-                        # Último ponto, usar o anterior
-                        replacement = df["y"].iloc[idx-1]
-                    
                     original = df["y"].iloc[idx]
+                    
+                    # Usar janela de 5 pontos ou menos se não houver
+                    window_start = max(0, idx - 2)
+                    window_end = min(len(df), idx + 3)
+                    
+                    # Remover o próprio outlier da janela
+                    window_values = [df["y"].iloc[i] for i in range(window_start, window_end) if i != idx]
+                    
+                    if window_values:
+                        if self.use_robust_stats:
+                            replacement = np.median(window_values)
+                        else:
+                            replacement = np.mean(window_values)
+                    else:
+                        # Fallback: usar a mediana global
+                        replacement = df["y"].median()
+                    
                     logger.info(f"Outlier na posição {idx} (data: {df['ds'].iloc[idx].strftime('%Y-%m-%d')}): {original:.2f} substituído por {replacement:.2f}")
                     df_fixed["y"].iloc[idx] = replacement
                 
                 # Salvar ambas as versões
                 self.original_data = df.copy()
                 return df_fixed
+        else:
+            logger.info("Poucos dados para detecção confiável de outliers - mantendo dados originais")
         
         return df
     
     def _extract_seasonal_pattern(self, df: pd.DataFrame) -> Dict[int, float]:
-        """Extrai o padrão sazonal dos dados"""
+        """Extrai o padrão sazonal dos dados com validações robustas"""
         logger.info("Extraindo padrão sazonal")
         
-        # Se temos poucos dados, o padrão sazonal pode não ser confiável
-        if len(df) < 12:
-            logger.warning(f"Poucos dados ({len(df)} pontos) para extrair padrão sazonal confiável. Usando padrão simplificado.")
+        # Se temos poucos dados, usar padrão neutro
+        if len(df) < 6:
+            logger.warning(f"Poucos dados ({len(df)} pontos) para extrair padrão sazonal. Usando padrão neutro.")
+            neutral_value = 1.0 if self.seasonality_mode == "multiplicative" else 0.0
+            return {month: neutral_value for month in range(1, 13)}
         
-        # Adicionar coluna de tempo para ajuste de tendência
-        df = df.copy()
-        df["t"] = np.arange(len(df))
+        # Calcular estatísticas globais
+        if self.use_robust_stats:
+            global_level = df["y"].median()
+        else:
+            global_level = df["y"].mean()
         
-        # Ajuste de tendência linear: y = a + b*t
-        b, a = np.polyfit(df["t"], df["y"], deg=1)
-        logger.info(f"Tendência linear: y = {a:.2f} + {b:.2f} * t")
+        logger.info(f"Nível global dos dados: {global_level:.2f}")
         
-        # Estimar tendência
-        df["trend"] = a + b * df["t"]
+        # Evitar divisão por zero
+        if global_level <= 0:
+            global_level = 1.0
+            logger.warning("Nível global muito baixo, usando 1.0 como referência")
         
-        # Calcular fatores sazonais
+        # Agrupar por mês e calcular estatísticas
+        monthly_stats = df.groupby(df["ds"].dt.month)["y"].agg(['mean', 'median', 'count']).to_dict('index')
+        
+        # Calcular fatores sazonais iniciais
+        seasonal_pattern = {}
+        for month in range(1, 13):
+            if month in monthly_stats:
+                stats = monthly_stats[month]
+                
+                # Usar estatística robusta se solicitado
+                if self.use_robust_stats:
+                    month_value = stats['median']
+                else:
+                    month_value = stats['mean']
+                
+                # Calcular fator sazonal
+                if self.seasonality_mode == "multiplicative":
+                    factor = month_value / global_level
+                    # Aplicar limites para evitar fatores extremos
+                    factor = max(self.min_seasonal_factor, min(self.max_seasonal_factor, factor))
+                else:  # additive
+                    factor = month_value - global_level
+                    # Para modo aditivo, limitar baseado no desvio padrão
+                    std_global = df["y"].std()
+                    factor = max(-2*std_global, min(2*std_global, factor))
+                
+                seasonal_pattern[month] = factor
+                logger.info(f"Mês {month}: {stats['count']} observações, valor={month_value:.2f}, fator={factor:.3f}")
+            else:
+                # Mês sem dados - usar valor neutro
+                neutral_value = 1.0 if self.seasonality_mode == "multiplicative" else 0.0
+                seasonal_pattern[month] = neutral_value
+                logger.warning(f"Mês {month}: sem dados, usando fator neutro {neutral_value}")
+        
+        # Aplicar suavização apenas se temos dados suficientes
+        if len([m for m in seasonal_pattern.values() if m != (1.0 if self.seasonality_mode == "multiplicative" else 0.0)]) >= 3:
+            logger.info("Aplicando suavização ao padrão sazonal")
+            smoothed = self._smooth_seasonal_pattern(seasonal_pattern)
+        else:
+            logger.info("Poucos meses com dados - mantendo padrão sem suavização")
+            smoothed = seasonal_pattern
+        
+        # Validação final: verificar se há fatores muito extremos
         if self.seasonality_mode == "multiplicative":
-            # Evitar divisão por zero
-            df["ratio"] = df["y"] / df["trend"].replace(0, np.nan)
-            df["ratio"] = df["ratio"].fillna(1.0)
-        else:  # additive
-            df["ratio"] = df["y"] - df["trend"]
+            extreme_factors = [month for month, factor in smoothed.items() 
+                             if factor < self.min_seasonal_factor or factor > self.max_seasonal_factor]
+            if extreme_factors:
+                logger.warning(f"Ajustando fatores extremos para os meses: {extreme_factors}")
+                for month in extreme_factors:
+                    if smoothed[month] < self.min_seasonal_factor:
+                        smoothed[month] = self.min_seasonal_factor
+                    elif smoothed[month] > self.max_seasonal_factor:
+                        smoothed[month] = self.max_seasonal_factor
         
-        # Agrupar por mês e calcular média
-        seasonal_pattern = df.groupby(df["ds"].dt.month)["ratio"].mean().to_dict()
-        
-        # Aplicar suavização para meses consecutivos
-        months = sorted(seasonal_pattern.keys())
+        logger.info(f"Padrão sazonal final: {smoothed}")
+        return smoothed
+    
+    def _smooth_seasonal_pattern(self, pattern: Dict[int, float]) -> Dict[int, float]:
+        """Aplica suavização ao padrão sazonal"""
         smoothed = {}
+        months = sorted(pattern.keys())
         
-        # Inicializar com o primeiro mês
-        prev = seasonal_pattern[months[0]]
-        smoothed[months[0]] = seasonal_pattern[months[0]]
+        # Para cada mês, aplicar suavização com vizinhos
+        for i, month in enumerate(months):
+            current = pattern[month]
+            
+            # Encontrar vizinhos (considerando circularidade do ano)
+            prev_month = months[(i - 1) % len(months)]
+            next_month = months[(i + 1) % len(months)]
+            
+            prev_val = pattern[prev_month]
+            next_val = pattern[next_month]
+            
+            # Aplicar suavização
+            smoothed[month] = (
+                self.seasonal_smooth * current + 
+                (1 - self.seasonal_smooth) * (prev_val + next_val) / 2
+            )
         
-        # Aplicar suavização nos meses seguintes
-        for m in months[1:]:
-            smoothed[m] = self.seasonal_smooth * seasonal_pattern[m] + (1 - self.seasonal_smooth) * prev
-            prev = smoothed[m]
-        
-        # Verificar se há alguma entrada faltando (deveria ter 12 meses)
-        for m in range(1, 13):
-            if m not in smoothed:
-                smoothed[m] = 1.0 if self.seasonality_mode == "multiplicative" else 0.0
-        
-        logger.info(f"Padrão sazonal extraído: {smoothed}")
         return smoothed
         
     def _extract_day_of_week_pattern(self, df: pd.DataFrame) -> Dict[int, float]:
@@ -205,38 +278,50 @@ class ModeloAjustado:
         logger.info("Extraindo padrão por dia da semana")
         
         # Se temos poucos dados, o padrão diário pode não ser confiável
-        if len(df) < 7:
-            logger.warning(f"Poucos dados ({len(df)} pontos) para extrair padrão diário confiável. Usando padrão simplificado.")
-            return {}
+        if len(df) < 14:  # Pelo menos 2 semanas
+            logger.warning(f"Poucos dados ({len(df)} pontos) para extrair padrão diário confiável. Usando padrão neutro.")
+            neutral_value = 1.0 if self.seasonality_mode == "multiplicative" else 0.0
+            return {day: neutral_value for day in range(7)}
             
         # Adicionar coluna de dia da semana
         df = df.copy()
         df["weekday"] = df["ds"].dt.weekday  # 0 = Segunda, 6 = Domingo
         
-        # Agrupar por dia da semana e calcular média
-        daily_values = df.groupby("weekday")["y"].mean().to_dict()
+        # Agrupar por dia da semana e calcular estatísticas
+        if self.use_robust_stats:
+            daily_values = df.groupby("weekday")["y"].median().to_dict()
+            global_level = df["y"].median()
+        else:
+            daily_values = df.groupby("weekday")["y"].mean().to_dict()
+            global_level = df["y"].mean()
         
-        # Calcular a média global
-        global_mean = np.mean(list(daily_values.values()))
-        if global_mean == 0:
-            global_mean = 1.0  # Evitar divisão por zero
+        # Evitar divisão por zero
+        if global_level <= 0:
+            global_level = 1.0
         
-        # Calcular os fatores relativos à média global
+        # Calcular os fatores relativos ao nível global
         day_of_week_pattern = {}
-        for day, value in daily_values.items():
-            if self.seasonality_mode == "multiplicative":
-                day_of_week_pattern[day] = value / global_mean
-            else:  # additive
-                day_of_week_pattern[day] = value - global_mean
-        
-        # Verificar se há algum dia faltando (deveria ter 7 dias)
         for day in range(7):
-            if day not in day_of_week_pattern:
-                day_of_week_pattern[day] = 1.0 if self.seasonality_mode == "multiplicative" else 0.0
+            if day in daily_values:
+                if self.seasonality_mode == "multiplicative":
+                    factor = daily_values[day] / global_level
+                    # Limitar fatores extremos
+                    factor = max(0.5, min(2.0, factor))
+                else:  # additive
+                    factor = daily_values[day] - global_level
+                    # Limitar baseado no desvio padrão
+                    std_global = df["y"].std()
+                    factor = max(-std_global, min(std_global, factor))
+                
+                day_of_week_pattern[day] = factor
+            else:
+                # Dia sem dados
+                neutral_value = 1.0 if self.seasonality_mode == "multiplicative" else 0.0
+                day_of_week_pattern[day] = neutral_value
         
-        # Converter os dias para nomes para melhor legibilidade em logs
+        # Log para debug
         dias_semana = {0: 'Segunda', 1: 'Terça', 2: 'Quarta', 3: 'Quinta', 4: 'Sexta', 5: 'Sábado', 6: 'Domingo'}
-        pattern_legivel = {dias_semana[day]: f"{factor:.2f}" for day, factor in day_of_week_pattern.items()}
+        pattern_legivel = {dias_semana[day]: f"{factor:.3f}" for day, factor in day_of_week_pattern.items()}
         
         logger.info(f"Padrão por dia da semana extraído: {pattern_legivel}")
         return day_of_week_pattern
@@ -258,6 +343,7 @@ class ModeloAjustado:
             # Log de estatísticas
             logger.info(f"Estatísticas dos dados:")
             logger.info(f"  Média: {df['y'].mean():.2f}")
+            logger.info(f"  Mediana: {df['y'].median():.2f}")
             logger.info(f"  Desvio padrão: {df['y'].std():.2f}")
             logger.info(f"  Mínimo: {df['y'].min():.2f}")
             logger.info(f"  Máximo: {df['y'].max():.2f}")
@@ -265,26 +351,60 @@ class ModeloAjustado:
             # Extrair padrão sazonal
             seasonal_pattern = self._extract_seasonal_pattern(df)
             
-            # Calcular tendência com média móvel para suavização
+            # Calcular tendência de forma mais robusta
             df = df.sort_values("ds")
+            
+            # Usar mediana móvel se solicitado, senão média móvel
             if len(df) >= self.trend_window:
-                # Média móvel para suavizar a tendência
-                df["y_smooth"] = df["y"].rolling(window=self.trend_window, min_periods=1).mean()
+                if self.use_robust_stats:
+                    df["y_smooth"] = df["y"].rolling(window=self.trend_window, min_periods=1).median()
+                else:
+                    df["y_smooth"] = df["y"].rolling(window=self.trend_window, min_periods=1).mean()
             else:
                 df["y_smooth"] = df["y"]
             
-            # Ajuste de tendência linear: y = a + b*t
+            # Ajuste de tendência mais robusto
             t_values = np.arange(len(df))
-            b, a = np.polyfit(t_values, df["y_smooth"], deg=1)
+            
+            # Usar regressão robusta se poucos dados ou alta variabilidade
+            if len(df) < 12 or (df["y"].std() / df["y"].mean()) > 0.5:
+                # Tendência baseada na diferença entre primeiro e último terço dos dados
+                first_third = df["y_smooth"].iloc[:max(1, len(df)//3)].mean()
+                last_third = df["y_smooth"].iloc[-max(1, len(df)//3):].mean()
+                
+                # Calcular slope baseado na diferença temporal
+                time_span = len(df) - 1
+                if time_span > 0:
+                    b = (last_third - first_third) / time_span
+                else:
+                    b = 0
+                
+                # Intercepto é a média global
+                a = df["y_smooth"].mean() - b * (len(df) - 1) / 2
+            else:
+                # Regressão linear padrão
+                b, a = np.polyfit(t_values, df["y_smooth"], deg=1)
+            
+            # Garantir que a tendência não seja muito negativa (evitar valores zero)
+            min_trend_at_end = df["y"].quantile(0.1)  # 10º percentil
+            trend_at_end = a + b * (len(df) - 1)
+            
+            if trend_at_end < min_trend_at_end:
+                logger.warning(f"Tendência muito negativa ajustada: {trend_at_end:.2f} -> {min_trend_at_end:.2f}")
+                # Recalcular slope para atingir o mínimo desejado
+                b = (min_trend_at_end - a) / (len(df) - 1) if len(df) > 1 else 0
             
             # Extrair padrão por dia da semana se estivermos com granularidade diária
             day_of_week_pattern = {}
-            if self.freq == 'D' and len(df) >= 7:  # Pelo menos uma semana de dados
+            if self.freq == 'D' and len(df) >= 14:  # Pelo menos 2 semanas
                 try:
                     day_of_week_pattern = self._extract_day_of_week_pattern(df)
                     logger.info("Padrão por dia da semana extraído com sucesso")
                 except Exception as e:
                     logger.error(f"Erro ao extrair padrão por dia da semana: {e}")
+            
+            # Calcular baseline (valor mínimo esperado)
+            baseline = max(df["y"].quantile(0.05), 0.1)  # 5º percentil ou 0.1, o que for maior
             
             # Armazenar parâmetros do modelo
             self.models[item_id] = {
@@ -295,9 +415,11 @@ class ModeloAjustado:
                 "last_t": len(df) - 1,
                 "last_date": df["ds"].iloc[-1],
                 "mean": df["y"].mean(),
+                "median": df["y"].median(),
                 "std": df["y"].std(),
                 "min": df["y"].min(),
                 "max": df["y"].max(),
+                "baseline": baseline,
                 "last_value": df["y"].iloc[-1]
             }
             
@@ -309,11 +431,17 @@ class ModeloAjustado:
             else:  # additive
                 df["prediction"] = df["trend"] + df.apply(lambda x: seasonal_pattern.get(x["ds"].month, 0.0), axis=1)
             
+            # Garantir valores positivos nas previsões de teste
+            df["prediction"] = np.maximum(df["prediction"], baseline)
+            
             # Calcular métricas
             mae = np.mean(np.abs(df["y"] - df["prediction"]))
-            mape = np.mean(np.abs((df["y"] - df["prediction"]) / df["y"])) * 100
+            mape = np.mean(np.abs((df["y"] - df["prediction"]) / np.maximum(df["y"], 0.1))) * 100
             rmse = np.sqrt(np.mean((df["y"] - df["prediction"])**2))
             
+            logger.info(f"Parâmetros do modelo:")
+            logger.info(f"  Tendência: a={a:.3f}, b={b:.3f}")
+            logger.info(f"  Baseline: {baseline:.2f}")
             logger.info(f"Métricas de ajuste:")
             logger.info(f"  MAE: {mae:.2f}")
             logger.info(f"  RMSE: {rmse:.2f}")
@@ -360,7 +488,10 @@ class ModeloAjustado:
             last_t = model["last_t"]
             mean, std = model["mean"], model["std"]
             min_val, max_val = model["min"], model["max"]
+            baseline = model["baseline"]
             last_value = model["last_value"]
+            
+            logger.info(f"Parâmetros do modelo: a={a:.3f}, b={b:.3f}, baseline={baseline:.2f}")
             
             # Gerar datas futuras
             start = pd.to_datetime(start_date)
@@ -375,6 +506,9 @@ class ModeloAjustado:
                 # Tendência linear
                 trend = a + b * t_future
                 
+                # Garantir que a tendência não fique muito baixa
+                trend = max(trend, baseline * 0.5)
+                
                 # Fator sazonal
                 month = date.month
                 seasonal = seasonal_pattern.get(month, 1.0 if self.seasonality_mode == "multiplicative" else 0.0)
@@ -387,10 +521,10 @@ class ModeloAjustado:
                     prediction = trend + seasonal
                     seasonal_component = seasonal
                     
-                # Aplicar fator de crescimento global (para todos os meses)
+                # Aplicar fator de crescimento global
                 prediction = prediction * self.growth_factor
                 
-                # Aplicar ajustes específicos por mês (se existirem)
+                # Aplicar ajustes específicos por mês
                 month_adjustment = self.month_adjustments.get(date.month, 1.0)
                 if month_adjustment != 1.0:
                     logger.info(f"Aplicando ajuste de {month_adjustment:.2f}x para o mês {date.month}")
@@ -398,67 +532,52 @@ class ModeloAjustado:
                     
                 # Aplicar ajustes por dia da semana
                 if self.freq == 'D':
-                    # weekday() retorna 0-6 (Segunda=0, Domingo=6)
                     weekday = date.weekday()
                     day_name = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'][weekday]
                     
-                    # Primeiro verificar se temos padrões históricos
+                    # Padrões históricos
                     hist_day_pattern = model.get("day_of_week_pattern", {})
                     if hist_day_pattern and weekday in hist_day_pattern:
                         day_factor = hist_day_pattern[weekday]
-                        logger.info(f"Aplicando ajuste histórico de {day_factor:.2f}x para {day_name}")
                         if self.seasonality_mode == "multiplicative":
                             prediction = prediction * day_factor
                         else:  # additive
                             prediction = prediction + day_factor
                     
-                    # Depois aplicar ajustes manuais, se existirem (prioridade mais alta)
+                    # Ajustes manuais
                     if self.day_of_week_adjustments and weekday in self.day_of_week_adjustments:
                         day_adjustment = self.day_of_week_adjustments[weekday]
                         if day_adjustment != 1.0:
                             logger.info(f"Aplicando ajuste manual de {day_adjustment:.2f}x para {day_name}")
                             prediction = prediction * day_adjustment
-                    
+                
                 # Verificar e aplicar ajustes para feriados
                 if self.feriados_enabled:
                     data_str = date.strftime("%Y-%m-%d")
                     e_feriado, descricao = self.feriados.verificar_feriado(date)
                     
                     if e_feriado:
-                        # Verificar se existe um ajuste específico para esta data
                         feriado_adjustment = self.feriados_adjustments.get(data_str)
-                        
                         if feriado_adjustment:
                             logger.info(f"Aplicando ajuste de {feriado_adjustment:.2f}x para {data_str} ({descricao})")
                             prediction = prediction * feriado_adjustment
                 
-                # Garantir valores positivos e realistas
-                prediction = max(0, prediction)  # Garantir positivo
+                # Garantir valor mínimo (baseline) - PRINCIPAL CORREÇÃO
+                prediction = max(prediction, baseline)
                 
-                # Limitar valores muito altos (3x o máximo histórico)
-                if prediction > 3 * max_val:
-                    logger.warning(f"Previsão para {date.strftime('%Y-%m-%d')} limitada: {prediction:.2f} -> {3 * max_val:.2f}")
-                    prediction = 3 * max_val
+                # Limitar valores muito altos de forma mais conservadora
+                max_reasonable = max(max_val * 2, mean * 3)  # Mais conservador
+                if prediction > max_reasonable:
+                    logger.warning(f"Previsão para {date.strftime('%Y-%m-%d')} limitada: {prediction:.2f} -> {max_reasonable:.2f}")
+                    prediction = max_reasonable
                 
-                # Calcular z-score com base no nível de confiança
-                # Para 95% de confiança, z_score = 1.96
-                # Para 90% de confiança, z_score = 1.645
-                # Para 80% de confiança, z_score = 1.28
+                # Calcular intervalos de confiança
                 import scipy.stats as stats
                 z_score = stats.norm.ppf((1 + self.confidence_level) / 2)
-                
-                # Ajustar o desvio padrão com o fator de confiança
-                # Um fator menor torna os intervalos mais estreitos
                 adjusted_std = std * self.confidence_factor
                 
-                # Intervalos de confiança ajustados
-                lower = max(0, prediction - z_score * adjusted_std)
+                lower = max(baseline * 0.5, prediction - z_score * adjusted_std)  # Garantir mínimo
                 upper = prediction + z_score * adjusted_std
-                
-                logger.info(f"Intervalo de confiança para {date.strftime('%Y-%m-%d')}: "
-                           f"nível={self.confidence_level*100:.1f}%, "
-                           f"z-score={z_score:.3f}, "
-                           f"fator={self.confidence_factor}")
                 
                 results.append({
                     "item_id": item_id,
@@ -477,6 +596,8 @@ class ModeloAjustado:
                 logger.info(f"Previsão gerada para {len(results)} períodos")
                 logger.info(f"Primeiro período: {results[0]['ds']} - valor: {results[0]['yhat']}")
                 logger.info(f"Último período: {results[-1]['ds']} - valor: {results[-1]['yhat']}")
+                logger.info(f"Valor mínimo previsto: {min([r['yhat'] for r in results]):.2f}")
+                logger.info(f"Valor máximo previsto: {max([r['yhat'] for r in results]):.2f}")
             
             logger.info(f"{'='*40}\n")
             return results
