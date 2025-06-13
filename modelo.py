@@ -616,3 +616,110 @@ class ModeloAjustado:
                 results.extend(forecast)
         
         return results
+    
+    def predict_quarterly(self, item_id: int, start_date: str, periods: int) -> Optional[List[Dict]]:
+        """
+        Gera previsões agrupadas por trimestre (3 em 3 meses)
+        
+        Args:
+            item_id: ID do item
+            start_date: Data de início das previsões
+            periods: Número de trimestres para prever
+            
+        Returns:
+            Lista de previsões agrupadas por trimestre
+        """
+        if item_id not in self.models:
+            logger.warning(f"Item {item_id}: Modelo não encontrado")
+            return None
+            
+        logger.info(f"\n{'='*40}")
+        logger.info(f"GERANDO PREVISÃO TRIMESTRAL PARA ITEM {item_id}")
+        logger.info(f"{'-'*40}")
+        logger.info(f"Data de início: {start_date}")
+        logger.info(f"Trimestres: {periods}")
+        
+        try:
+            # Gerar previsões mensais para o período correspondente
+            monthly_periods = periods * 3  # 3 meses por trimestre
+            monthly_forecasts = self.predict(item_id, start_date, monthly_periods)
+            
+            if not monthly_forecasts:
+                return None
+            
+            # Agrupar por trimestre
+            quarterly_results = []
+            
+            for quarter in range(periods):
+                quarter_start_idx = quarter * 3
+                quarter_end_idx = quarter_start_idx + 3
+                
+                # Selecionar os 3 meses do trimestre
+                quarter_forecasts = monthly_forecasts[quarter_start_idx:quarter_end_idx]
+                
+                if not quarter_forecasts:
+                    continue
+                
+                # Calcular dados agregados do trimestre
+                quarter_yhat = sum(f['yhat'] for f in quarter_forecasts)
+                quarter_lower = sum(f['yhat_lower'] for f in quarter_forecasts)
+                quarter_upper = sum(f['yhat_upper'] for f in quarter_forecasts)
+                quarter_trend = sum(f['trend'] for f in quarter_forecasts)
+                quarter_yearly = sum(f['yearly'] for f in quarter_forecasts)
+                
+                # Data de início do trimestre
+                first_month = pd.to_datetime(quarter_forecasts[0]['ds'])
+                last_month = pd.to_datetime(quarter_forecasts[-1]['ds'])
+                
+                # Nome do trimestre
+                quarter_name = f"Q{(first_month.month - 1) // 3 + 1}/{first_month.year}"
+                
+                # MANTER COMPATIBILIDADE: Usar os mesmos campos que previsões mensais
+                quarterly_results.append({
+                    "item_id": item_id,
+                    "ds": first_month.strftime("%Y-%m-%d %H:%M:%S"),  # Data de início do trimestre
+                    "yhat": round(quarter_yhat, 2),
+                    "yhat_lower": round(quarter_lower, 2),
+                    "yhat_upper": round(quarter_upper, 2),
+                    "trend": round(quarter_trend, 2),
+                    "yearly": round(quarter_yearly, 2),
+                    "weekly": 0.0,  # Manter compatibilidade
+                    "holidays": 0.0,  # Manter compatibilidade
+                    # Campos adicionais específicos para trimestres (opcionais)
+                    "_quarter_info": {  # Prefixo _ indica campos internos/adicionais
+                        "quarter_name": quarter_name,
+                        "start_date": first_month.strftime("%Y-%m-%d"),
+                        "end_date": last_month.strftime("%Y-%m-%d"),
+                        "monthly_details": [
+                            {
+                                "month": pd.to_datetime(f['ds']).strftime("%Y-%m"),
+                                "yhat": f['yhat'],
+                                "yhat_lower": f['yhat_lower'],
+                                "yhat_upper": f['yhat_upper']
+                            }
+                            for f in quarter_forecasts
+                        ]
+                    }
+                })
+                
+                logger.info(f"Trimestre {quarter_name}: {quarter_yhat:.2f} (soma de 3 meses)")
+            
+            logger.info(f"Previsão trimestral gerada: {len(quarterly_results)} trimestres")
+            logger.info(f"{'='*40}\n")
+            
+            return quarterly_results
+            
+        except Exception as e:
+            logger.exception(f"Erro ao gerar previsão trimestral para item {item_id}")
+            raise ValueError(f"Falha ao gerar previsão trimestral para item {item_id}: {str(e)}")
+    
+    def predict_quarterly_multiple(self, items: List[int], start_date: str, periods: int) -> List[Dict]:
+        """Gera previsões trimestrais para múltiplos itens"""
+        results = []
+        
+        for item_id in items:
+            quarterly_forecast = self.predict_quarterly(item_id, start_date, periods)
+            if quarterly_forecast:
+                results.extend(quarterly_forecast)
+        
+        return results

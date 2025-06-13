@@ -24,6 +24,7 @@ def predict():
     logger.info(f"granularidade: {data.get('granularidade', 'M')}")
     logger.info(f"periodos: {data.get('periodos', 0)}")
     logger.info(f"data_inicio: {data.get('data_inicio', '')}")
+    logger.info(f"agrupamento_trimestral: {data.get('agrupamento_trimestral', False)}")
     logger.info(f"seasonal_smooth (se houver): {data.get('seasonal_smooth', 'não informado')}")
     logger.info(f"seasonality_mode (se houver): {data.get('seasonality_mode', 'não informado')}")
     logger.info(f"confidence_level (se houver): {data.get('confidence_level', 'não informado')}")
@@ -81,6 +82,14 @@ def predict():
     gran = data.get("granularidade", "M").upper()
     if gran not in ["M", "S", "D"]:
         return jsonify({"error":"'granularidade' deve ser 'M', 'S' ou 'D'."}), 400
+    
+    # Verificar se é agrupamento trimestral
+    agrupamento_trimestral = data.get("agrupamento_trimestral", False)
+    
+    # Para agrupamento trimestral, forçar granularidade mensal
+    if agrupamento_trimestral and gran != "M":
+        logger.info("Agrupamento trimestral solicitado - forçando granularidade mensal")
+        gran = "M"
 
     try:
         periods = int(data.get("periodos", 0))
@@ -168,6 +177,9 @@ def predict():
         if anos_feriados:
             logger.info(f"Anos de feriados: {anos_feriados}")
             
+        if agrupamento_trimestral:
+            logger.info(f"MODO TRIMESTRAL ATIVADO - Períodos interpretados como trimestres")
+            
         # Criar e treinar o modelo
         model = ModeloAjustado(
             granularity=gran, 
@@ -189,21 +201,35 @@ def predict():
         
         # Gera previsões para todos os itens
         item_ids = list(items_data.keys())
-        forecast_results = model.predict_multiple(
-            items=item_ids, 
-            start_date=start_date.strftime("%Y-%m-%d"), 
-            periods=periods
-        )
+        
+        # Escolher método de previsão baseado no agrupamento solicitado
+        if agrupamento_trimestral:
+            forecast_results = model.predict_quarterly_multiple(
+                items=item_ids,
+                start_date=start_date.strftime("%Y-%m-%d"),
+                periods=periods  # períodos = número de trimestres
+            )
+        else:
+            forecast_results = model.predict_multiple(
+                items=item_ids, 
+                start_date=start_date.strftime("%Y-%m-%d"), 
+                periods=periods
+            )
         
         # Log COMPLETO da saída
         logger.info("="*80)
         logger.info("RESULTADOS COMPLETOS DA PREVISÃO:")
         logger.info("-"*80)
         logger.info(f"Total de previsões geradas: {len(forecast_results)}")
+        logger.info(f"Tipo de agrupamento: {'Trimestral' if agrupamento_trimestral else 'Individual'}")
         
-        # Salvar resultados completos em um arquivo JSON
+        # Salvar resultados completos em um arquivo JSON (com info adicional para logs)
+        output_data_for_logs = {
+            "forecast": forecast_results,
+            "agrupamento_trimestral": agrupamento_trimestral
+        }
         with open('resultados_completos.json', 'w', encoding='utf-8') as f:
-            json.dump({"forecast": forecast_results}, f, ensure_ascii=False, indent=4)
+            json.dump(output_data_for_logs, f, ensure_ascii=False, indent=4)
         logger.info(f"Resultados completos salvos em 'resultados_completos.json'")
         
         # Agrupar por item_id para um log mais organizado
@@ -216,25 +242,34 @@ def predict():
         
         # Log COMPLETO por item
         for item_id, forecasts in results_by_item.items():
-            logger.info(f"\nItem {item_id}: {len(forecasts)} períodos previstos")
-            logger.info(f"TODOS OS PERÍODOS PARA ITEM {item_id}:")
+            period_type = "trimestres" if agrupamento_trimestral else "períodos"
+            logger.info(f"\nItem {item_id}: {len(forecasts)} {period_type} previstos")
+            logger.info(f"TODOS OS {period_type.upper()} PARA ITEM {item_id}:")
             logger.info(json.dumps(forecasts, indent=2))
             
             # Análise estatística dos resultados
             if forecasts:
                 yhats = [f['yhat'] for f in forecasts]
-                trends = [f['trend'] for f in forecasts]
-                yearlys = [f['yearly'] for f in forecasts]
                 
-                logger.info(f"\nEstatísticas das previsões para item {item_id}:")
-                logger.info(f"  Valor mínimo previsto: {min(yhats)}")
-                logger.info(f"  Valor máximo previsto: {max(yhats)}")
-                logger.info(f"  Valor médio previsto: {sum(yhats)/len(yhats):.2f}")
-                logger.info(f"  Tendência inicial: {trends[0]}")
-                logger.info(f"  Tendência final: {trends[-1]}")
-                logger.info(f"  Variação da tendência: {trends[-1] - trends[0]:.2f} ({(trends[-1]/trends[0]-1)*100:.2f}%)")
-                logger.info(f"  Contribuição sazonal mínima: {min(yearlys)}")
-                logger.info(f"  Contribuição sazonal máxima: {max(yearlys)}")
+                if agrupamento_trimestral:
+                    logger.info(f"\nEstatísticas das previsões trimestrais para item {item_id}:")
+                    logger.info(f"  Valor mínimo previsto por trimestre: {min(yhats)}")
+                    logger.info(f"  Valor máximo previsto por trimestre: {max(yhats)}")
+                    logger.info(f"  Valor médio por trimestre: {sum(yhats)/len(yhats):.2f}")
+                    logger.info(f"  Total previsto para todos os trimestres: {sum(yhats):.2f}")
+                else:
+                    trends = [f['trend'] for f in forecasts]
+                    yearlys = [f['yearly'] for f in forecasts]
+                    
+                    logger.info(f"\nEstatísticas das previsões para item {item_id}:")
+                    logger.info(f"  Valor mínimo previsto: {min(yhats)}")
+                    logger.info(f"  Valor máximo previsto: {max(yhats)}")
+                    logger.info(f"  Valor médio previsto: {sum(yhats)/len(yhats):.2f}")
+                    logger.info(f"  Tendência inicial: {trends[0]}")
+                    logger.info(f"  Tendência final: {trends[-1]}")
+                    logger.info(f"  Variação da tendência: {trends[-1] - trends[0]:.2f} ({(trends[-1]/trends[0]-1)*100:.2f}%)")
+                    logger.info(f"  Contribuição sazonal mínima: {min(yearlys)}")
+                    logger.info(f"  Contribuição sazonal máxima: {max(yearlys)}")
         
         logger.info("="*80)
         logger.info("Previsão concluída com sucesso")
@@ -242,18 +277,49 @@ def predict():
         # Salvar tanto a entrada quanto a saída em um único arquivo para referência
         combined_data = {
             "input": data,
-            "output": {"forecast": forecast_results}
+            "output": output_data_for_logs
         }
         with open('dados_completos_input_output.json', 'w', encoding='utf-8') as f:
             json.dump(combined_data, f, ensure_ascii=False, indent=4)
         logger.info(f"Dados completos de entrada e saída salvos em 'dados_completos_input_output.json'")
         
+        # MANTER COMPATIBILIDADE: Retornar apenas {"forecast": [...]} como antes
         return jsonify({"forecast": forecast_results})
     
     except Exception as ex:
         logger.error(f"Erro ao processar previsão: {str(ex)}")
         logger.error(traceback.format_exc())
         return jsonify({"error": f"Falha na previsão: {str(ex)}"}), 500
+
+@app.route('/predict_quarterly', methods=['POST'])
+def predict_quarterly():
+    """
+    Endpoint dedicado para previsões trimestrais (agrupadas por 3 em 3 meses)
+    
+    Parâmetros esperados:
+    - sales_data: Lista de registros de vendas
+    - data_inicio: Data de início das previsões (YYYY-MM-DD)
+    - trimestres: Número de trimestres para prever
+    - Outros parâmetros opcionais (mesmos do endpoint principal)
+    """
+    data = request.get_json(force=True) or {}
+    
+    logger.info("="*80)
+    logger.info("ENDPOINT DEDICADO PARA PREVISÕES TRIMESTRAIS")
+    logger.info("="*80)
+    
+    # Forçar configurações para previsão trimestral
+    data["granularidade"] = "M"  # Sempre mensal para trimestres
+    data["agrupamento_trimestral"] = True
+    
+    # Converter 'trimestres' para 'periodos' se fornecido
+    if "trimestres" in data:
+        data["periodos"] = data["trimestres"]
+        logger.info(f"Convertendo 'trimestres' ({data['trimestres']}) para 'periodos'")
+    
+    # Chamar o endpoint principal com as configurações forçadas
+    # O endpoint predict() já retorna no formato compatível {"forecast": [...]}
+    return predict()
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
