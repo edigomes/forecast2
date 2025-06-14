@@ -1,4 +1,21 @@
-Flask
-pandas
-numpy
-scipy
+# Dependências principais
+flask>=3.0.0
+flask-cors>=6.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Produção
+gunicorn>=23.0.0
+
+# Data/Time
+python-dateutil>=2.8.0
+
+# Para logs estruturados (opcional)
+structlog>=23.0.0
+
+# Para monitoramento (opcional)
+psutil>=5.9.0
+
+# Dependências específicas do projeto
+# (adicione aqui dependências específicas do seu modelo de ML)

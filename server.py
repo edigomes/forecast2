@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import pandas as pd
 import logging
 import json
@@ -7,6 +8,16 @@ from modelo import ModeloAjustado
 from feriados_brasil import FeriadosBrasil
 
 app = Flask(__name__)
+
+# Configurar CORS para permitir requests de qualquer URL
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",  # Permite qualquer origem
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Métodos permitidos
+        "allow_headers": ["Content-Type", "Accept", "Authorization", "X-Requested-With"]  # Headers permitidos
+    }
+})
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -353,5 +364,201 @@ def predict_quarterly():
     # O endpoint predict() já retorna no formato compatível {"forecast": [...]}
     return predict()
 
+@app.route('/generate_html', methods=['POST'])
+def generate_html():
+    """
+    Endpoint dedicado para gerar HTML a partir dos dados de explicação
+    
+    Parâmetros esperados:
+    - item_id: ID do item
+    - prediction: Dados da previsão (yhat, yhat_lower, yhat_upper, trend, yearly, ds)
+    - explanation_data: Dados de explicação (summary, components, etc.)
+    - layout: "full" ou "compact" (padrão: "full")
+    - is_quarterly: Se é previsão trimestral (padrão: false)
+    - quarterly_info: Informações do trimestre (se aplicável)
+    - return_html_direct: True para retornar HTML puro (padrão: False = JSON)
+    
+    Headers:
+    - Accept: text/html -> retorna HTML puro para exibição direta no navegador
+    - Accept: application/json -> retorna JSON com HTML (padrão)
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        
+        logger.info("="*60)
+        logger.info("ENDPOINT GERADOR DE HTML")
+        logger.info("="*60)
+        
+        # Verificar se cliente quer HTML direto
+        wants_html_direct = (
+            request.headers.get('Accept', '').startswith('text/html') or
+            data.get('return_html_direct', False)
+        )
+        
+        logger.info(f"Modo retorno: {'HTML direto' if wants_html_direct else 'JSON'}")
+        
+        # Verificar se foi enviado html_data (modo simplificado) ou parâmetros individuais
+        if 'html_data' in data:
+            # Modo simplificado: usar dados do banco
+            html_data_from_db = data['html_data']
+            layout = data.get('layout', 'full')
+            
+            logger.info(f"Modo simplificado: usando html_data do banco")
+            logger.info(f"Layout: {layout}")
+            
+            # Extrair dados do html_data
+            item_id = html_data_from_db['item_id']
+            prediction = html_data_from_db['prediction']
+            explanation_data = html_data_from_db['explanation_data']
+            is_quarterly = html_data_from_db.get('is_quarterly', False)
+            quarterly_info = html_data_from_db.get('quarterly_info')
+            
+            # Converter data ISO de volta para pd.Timestamp
+            try:
+                date = pd.to_datetime(html_data_from_db['date_iso'])
+            except Exception as e:
+                if wants_html_direct:
+                    return f"<html><body><h1>Erro: Data inválida em html_data: {str(e)}</h1></body></html>", 400, {'Content-Type': 'text/html; charset=utf-8'}
+                return jsonify({"error": f"Data inválida em html_data: {str(e)}"}), 400
+                
+        else:
+            # Modo completo: validar parâmetros individuais
+            required_fields = ['item_id', 'prediction']
+            for field in required_fields:
+                if field not in data:
+                    if wants_html_direct:
+                        return f"<html><body><h1>Erro: Campo obrigatório '{field}' não fornecido</h1></body></html>", 400, {'Content-Type': 'text/html; charset=utf-8'}
+                    return jsonify({"error": f"Campo obrigatório '{field}' não fornecido"}), 400
+            
+            # Extrair parâmetros individuais
+            item_id = data['item_id']
+            prediction = data['prediction']
+            explanation_data = data.get('explanation_data', {})
+            layout = data.get('layout', 'full')
+            is_quarterly = data.get('is_quarterly', False)
+            quarterly_info = data.get('quarterly_info')
+            
+            # Converter data string para pd.Timestamp
+            try:
+                date = pd.to_datetime(prediction['ds'])
+            except Exception as e:
+                if wants_html_direct:
+                    return f"<html><body><h1>Erro: Data inválida em 'prediction.ds': {str(e)}</h1></body></html>", 400, {'Content-Type': 'text/html; charset=utf-8'}
+                return jsonify({"error": f"Data inválida em 'prediction.ds': {str(e)}"}), 400
+        
+        # Validar layout
+        if layout not in ['full', 'compact']:
+            layout = 'full'
+            logger.warning(f"Layout inválido, usando 'full'")
+        
+        # Validar prediction apenas no modo completo
+        if 'html_data' not in data:
+            required_prediction_fields = ['yhat', 'yhat_lower', 'yhat_upper', 'trend', 'yearly', 'ds']
+            for field in required_prediction_fields:
+                if field not in prediction:
+                    if wants_html_direct:
+                        return f"<html><body><h1>Erro: Campo obrigatório 'prediction.{field}' não fornecido</h1></body></html>", 400, {'Content-Type': 'text/html; charset=utf-8'}
+                    return jsonify({"error": f"Campo obrigatório 'prediction.{field}' não fornecido"}), 400
+        
+        logger.info(f"Gerando HTML para item {item_id}")
+        logger.info(f"Layout: {layout}")
+        logger.info(f"Trimestral: {is_quarterly}")
+        
+        # Criar um modelo temporário apenas para acessar as funções de geração de HTML
+        # Vamos usar dados fictícios mínimos para inicialização
+        modelo_temp = ModeloAjustado(
+            granularity='M',
+            include_explanation=True,
+            explanation_level='detailed',
+            explanation_language='pt',
+            html_layout=layout
+        )
+        
+        # Criar dados mínimos do modelo e métricas (simulados a partir dos dados de explicação)
+        model_data = {
+            'b': explanation_data.get('trend_slope', 0),  # Slope da tendência
+            'seasonal_pattern': explanation_data.get('seasonal_pattern', {}),
+            'mean': prediction.get('yhat', 100),
+            'std': explanation_data.get('std', 10)
+        }
+        
+        metrics_data = {
+            'data_points': explanation_data.get('data_points', 12),
+            'confidence_score': explanation_data.get('confidence_score', 'Média'),
+            'mape': explanation_data.get('mape', 15.0),
+            'r2': explanation_data.get('r2', 0.7),
+            'outlier_count': explanation_data.get('outlier_count', 0),
+            'data_completeness': explanation_data.get('data_completeness', 100.0),
+            'seasonal_strength': explanation_data.get('seasonal_strength', 0.3),
+            'trend_strength': explanation_data.get('trend_strength', 0.2),
+            'training_period': explanation_data.get('training_period', {
+                'start': '2023-01-01',
+                'end': '2023-12-01'
+            })
+        }
+        
+        # Armazenar temporariamente no modelo (necessário para as funções internas)
+        modelo_temp.models[item_id] = model_data
+        modelo_temp.quality_metrics[item_id] = metrics_data
+        
+        # Determinar informações do período
+        if is_quarterly and quarterly_info:
+            period_name = quarterly_info.get('quarter_name', f"Q{((date.month - 1) // 3) + 1}/{date.year}")
+            period_type = "trimestre"
+        else:
+            month_name = modelo_temp._get_month_name_pt(date.month)
+            period_name = f"{month_name}/{date.year}"
+            period_type = "mês"
+        
+        # Análise de confiança
+        confidence = metrics_data['confidence_score']
+        confidence_color = "#28a745" if confidence == "Alta" else "#ffc107" if confidence == "Média" else "#dc3545"
+        
+        # Gerar HTML usando as funções internas
+        if layout == "compact":
+            html_content = modelo_temp._generate_compact_html(
+                item_id, prediction, date, is_quarterly, quarterly_info,
+                model_data, metrics_data, period_name, period_type, 
+                confidence, confidence_color
+            )
+        else:
+            html_content = modelo_temp._generate_html_summary(
+                item_id, prediction, date, is_quarterly, quarterly_info, layout
+            )
+        
+        logger.info(f"HTML gerado com sucesso: {len(html_content)} caracteres")
+        logger.info("="*60)
+        
+        # Retornar HTML direto ou JSON baseado na preferência do cliente
+        if wants_html_direct:
+            # Retornar HTML puro para exibição direta no navegador
+            logger.info("Retornando HTML direto (text/html)")
+            return html_content, 200, {'Content-Type': 'text/html; charset=utf-8'}
+        else:
+            # Retornar JSON (comportamento padrão)
+            logger.info("Retornando JSON com HTML")
+            return jsonify({
+                "html": html_content,
+                "info": {
+                    "layout": layout,
+                    "size_chars": len(html_content),
+                    "is_quarterly": is_quarterly,
+                    "item_id": item_id,
+                    "period": period_name
+                }
+            })
+        
+    except Exception as ex:
+        logger.error(f"Erro ao gerar HTML: {str(ex)}")
+        logger.error(traceback.format_exc())
+        
+        # Tratar erros baseado na preferência do cliente
+        if request.headers.get('Accept', '').startswith('text/html') or request.get_json(force=True, silent=True, cache=False).get('return_html_direct', False):
+            return f"<html><body><h1>Erro interno: {str(ex)}</h1><p>Detalhes técnicos ocultos por segurança.</p></body></html>", 500, {'Content-Type': 'text/html; charset=utf-8'}
+        else:
+            return jsonify({"error": f"Falha na geração de HTML: {str(ex)}"}), 500
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    logger.info("🌐 CORS configurado para permitir requests de qualquer URL")
+    logger.info("📡 Servidor iniciando na porta 5000...")
+    app.run(debug=True, port=5000, host='127.0.0.1')

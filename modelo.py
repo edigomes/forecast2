@@ -651,6 +651,11 @@ class ModeloAjustado:
                     if explanation:
                         result["_explanation"] = explanation
                 
+                # NOVO: Adicionar dados para geração de HTML (sempre presente)
+                html_data = self._generate_html_data(item_id, result, date, is_quarterly=False)
+                if html_data:
+                    result["_html_data"] = html_data
+                
                 results.append(result)
             
             # Log dos resultados
@@ -769,6 +774,11 @@ class ModeloAjustado:
                     explanation = self._generate_quarterly_explanation(item_id, result, first_month, quarter_forecasts)
                     if explanation:
                         result["_explanation"] = explanation
+                
+                # NOVO: Adicionar dados para geração de HTML trimestral (sempre presente)
+                html_data = self._generate_html_data(item_id, result, first_month, is_quarterly=True, quarterly_info=result.get('_quarter_info'))
+                if html_data:
+                    result["_html_data"] = html_data
                 
                 quarterly_results.append(result)
                 
@@ -1607,3 +1617,69 @@ class ModeloAjustado:
             return "Pico no meio do trimestre"
         else:
             return "Padrão variável"
+    
+    def _generate_html_data(self, item_id: int, prediction: Dict, date: pd.Timestamp,
+                           is_quarterly: bool = False, quarterly_info: Dict = None) -> Dict:
+        """
+        Gera dados estruturados para geração de HTML posterior
+        
+        Args:
+            item_id: ID do item
+            prediction: Dados da previsão
+            date: Data da previsão
+            is_quarterly: Se é previsão trimestral
+            quarterly_info: Informações do trimestre
+            
+        Returns:
+            Dicionário com todos os dados necessários para gerar HTML
+        """
+        if item_id not in self.models or item_id not in self.quality_metrics:
+            return {}
+        
+        model = self.models[item_id]
+        metrics = self.quality_metrics[item_id]
+        
+        # Dados base da previsão
+        prediction_data = {
+            "yhat": prediction.get('yhat'),
+            "yhat_lower": prediction.get('yhat_lower'),
+            "yhat_upper": prediction.get('yhat_upper'),
+            "trend": prediction.get('trend'),
+            "yearly": prediction.get('yearly'),
+            "ds": prediction.get('ds')
+        }
+        
+        # Dados de explicação estruturados
+        explanation_data = {
+            "data_points": metrics.get('data_points', 0),
+            "confidence_score": metrics.get('confidence_score', 'Média'),
+            "mape": metrics.get('mape', 15.0),
+            "r2": metrics.get('r2', 0.5),
+            "outlier_count": metrics.get('outlier_count', 0),
+            "data_completeness": metrics.get('data_completeness', 100.0),
+            "seasonal_strength": metrics.get('seasonal_strength', 0.3),
+            "trend_strength": metrics.get('trend_strength', 0.2),
+            "training_period": metrics.get('training_period', {
+                'start': '2023-01-01',
+                'end': '2023-12-01'
+            }),
+            "trend_slope": model.get('b', 0),
+            "seasonal_pattern": model.get('seasonal_pattern', {}),
+            "std": model.get('std', 10)
+        }
+        
+        # Dados completos para geração de HTML
+        html_data = {
+            "item_id": item_id,
+            "prediction": prediction_data,
+            "explanation_data": explanation_data,
+            "is_quarterly": is_quarterly,
+            "date_iso": date.isoformat(),
+            "timestamp": date.timestamp()
+        }
+        
+        # Adicionar informações trimestrais se aplicável
+        if is_quarterly and quarterly_info:
+            html_data["quarterly_info"] = quarterly_info
+            
+        return html_data
