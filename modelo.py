@@ -1107,7 +1107,7 @@ class ModeloAjustado:
         
         # HTML formatado (layout completo)
         html = f"""
-        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #f8f9fa;">
+        <div style="font-family: Arial, sans-serif; zoom: 0.75; width: 100%; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #f8f9fa;">
             
             <!-- Cabeçalho Principal -->
             <div style="text-align: center; margin-bottom: 25px; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px;">
@@ -1347,7 +1347,7 @@ class ModeloAjustado:
         
         # HTML compacto para popup
         html = f"""
-        <div style="font-family: Arial, sans-serif; max-width: 400px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        <div style="font-family: Arial, sans-serif; width: 100%; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
             
             <!-- Cabeçalho Compacto -->
             <div style="text-align: center; margin-bottom: 15px; padding: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px;">
