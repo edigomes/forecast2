@@ -35,6 +35,9 @@ def predict():
     logger.info(f"feriados_enabled (se houver): {data.get('feriados_enabled', 'não informado')}")
     logger.info(f"feriados_adjustments (se houver): {data.get('feriados_adjustments', 'não informado')}")
     logger.info(f"anos_feriados (se houver): {data.get('anos_feriados', 'não informado')}")
+    logger.info(f"include_explanation (se houver): {data.get('include_explanation', 'não informado')}")
+    logger.info(f"explanation_level (se houver): {data.get('explanation_level', 'não informado')}")
+    logger.info(f"explanation_language (se houver): {data.get('explanation_language', 'não informado')}")
     
     # Log COMPLETO dos dados de vendas
     sales_data = data.get("sales_data", [])
@@ -177,6 +180,31 @@ def predict():
         if anos_feriados:
             logger.info(f"Anos de feriados: {anos_feriados}")
             
+        # Configurações de explicabilidade
+        include_explanation = data.get("include_explanation", False)
+        explanation_level = data.get("explanation_level", "basic")
+        explanation_language = data.get("explanation_language", "pt")
+        html_layout = data.get("html_layout", "full")  # NOVO: Layout do HTML
+        
+        # Validar parâmetros de explicabilidade
+        if explanation_level not in ["basic", "detailed", "advanced"]:
+            explanation_level = "basic"
+            logger.warning(f"explanation_level inválido, usando 'basic'")
+            
+        if explanation_language not in ["pt", "en"]:
+            explanation_language = "pt"
+            logger.warning(f"explanation_language inválido, usando 'pt'")
+            
+        if html_layout not in ["full", "compact"]:
+            html_layout = "full"
+            logger.warning(f"html_layout inválido, usando 'full'")
+            
+        logger.info(f"Explicações habilitadas: {include_explanation}")
+        if include_explanation:
+            logger.info(f"Nível de explicação: {explanation_level}")
+            logger.info(f"Idioma das explicações: {explanation_language}")
+            logger.info(f"Layout HTML: {html_layout}")
+            
         if agrupamento_trimestral:
             logger.info(f"MODO TRIMESTRAL ATIVADO - Períodos interpretados como trimestres")
             
@@ -194,7 +222,11 @@ def predict():
             day_of_week_adjustments=day_of_week_adjustments,
             feriados_enabled=feriados_enabled,
             feriados_adjustments=feriados_adjustments,
-            anos_feriados=anos_feriados
+            anos_feriados=anos_feriados,
+            include_explanation=include_explanation,
+            explanation_level=explanation_level,
+            explanation_language=explanation_language,
+            html_layout=html_layout
         )
         
         model.fit_multiple(items_data)

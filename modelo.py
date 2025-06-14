@@ -44,7 +44,12 @@ class ModeloAjustado:
                  day_of_week_adjustments: Optional[Dict[int, float]] = None,
                  feriados_enabled: bool = True,
                  feriados_adjustments: Optional[Dict[str, float]] = None,
-                 anos_feriados: Optional[List[int]] = None):
+                 anos_feriados: Optional[List[int]] = None,
+                 # NOVOS PARÂMETROS PARA EXPLICABILIDADE
+                 include_explanation: bool = False,
+                 explanation_level: str = "basic",
+                 explanation_language: str = "pt",
+                 html_layout: str = "full"):
         """
         Inicializa o modelo ajustado
         
@@ -61,6 +66,10 @@ class ModeloAjustado:
             max_seasonal_factor: Fator sazonal máximo para modo multiplicativo
             use_robust_stats: Se deve usar mediana ao invés de média (mais robusto)
             month_adjustments: Ajustes por mês {1: 1.2, 2: 0.9, ...}
+            include_explanation: Se deve incluir explicações nas previsões
+            explanation_level: Nível de detalhamento ('basic', 'detailed', 'advanced')
+            explanation_language: Idioma das explicações ('pt', 'en')
+            html_layout: Layout do HTML ('full', 'compact') - compact para popups
         """
         if granularity not in FREQ_MAP:
             raise ValueError("'granularity' deve ser 'M', 'S' ou 'D'")
@@ -83,6 +92,15 @@ class ModeloAjustado:
         self.month_adjustments = month_adjustments or {}
         self.day_of_week_adjustments = day_of_week_adjustments or {}
         self.models = {}
+        
+        # NOVOS PARÂMETROS PARA EXPLICABILIDADE
+        self.include_explanation = include_explanation
+        self.explanation_level = explanation_level
+        self.explanation_language = explanation_language
+        self.html_layout = html_layout
+        
+        # Armazenar métricas de qualidade para explicabilidade
+        self.quality_metrics = {}
         
         # Configuração de feriados
         self.feriados_enabled = feriados_enabled
@@ -439,6 +457,39 @@ class ModeloAjustado:
             mape = np.mean(np.abs((df["y"] - df["prediction"]) / np.maximum(df["y"], 0.1))) * 100
             rmse = np.sqrt(np.mean((df["y"] - df["prediction"])**2))
             
+            # NOVAS MÉTRICAS PARA EXPLICABILIDADE
+            r2 = 1 - (np.sum((df["y"] - df["prediction"])**2) / np.sum((df["y"] - df["y"].mean())**2))
+            data_points = len(df)
+            outliers_removed = hasattr(self, 'original_data') and len(getattr(self, 'original_data', [])) > len(df)
+            outlier_count = len(getattr(self, 'original_data', [])) - len(df) if outliers_removed else 0
+            
+            # Calcular qualidade dos dados
+            data_completeness = (len(df) / max(len(df), 1)) * 100  # Simplificado
+            seasonal_strength = abs(df["y"].max() - df["y"].min()) / df["y"].mean() if df["y"].mean() > 0 else 0
+            trend_strength = abs(b) * len(df) / df["y"].mean() if df["y"].mean() > 0 else 0
+            
+            # Avaliar confiança da previsão
+            confidence_score = "Alta" if mape < 15 and r2 > 0.7 else "Média" if mape < 30 and r2 > 0.4 else "Baixa"
+            
+            # Armazenar métricas de qualidade para explicabilidade
+            self.quality_metrics[item_id] = {
+                "mae": mae,
+                "mape": mape,
+                "rmse": rmse,
+                "r2": r2,
+                "data_points": data_points,
+                "outlier_count": outlier_count,
+                "data_completeness": data_completeness,
+                "seasonal_strength": seasonal_strength,
+                "trend_strength": trend_strength,
+                "confidence_score": confidence_score,
+                "training_period": {
+                    "start": df["ds"].min().strftime("%Y-%m-%d"),
+                    "end": df["ds"].max().strftime("%Y-%m-%d"),
+                    "months": len(df)
+                }
+            }
+            
             logger.info(f"Parâmetros do modelo:")
             logger.info(f"  Tendência: a={a:.3f}, b={b:.3f}")
             logger.info(f"  Baseline: {baseline:.2f}")
@@ -446,6 +497,8 @@ class ModeloAjustado:
             logger.info(f"  MAE: {mae:.2f}")
             logger.info(f"  RMSE: {rmse:.2f}")
             logger.info(f"  MAPE: {mape:.2f}%")
+            logger.info(f"  R²: {r2:.3f}")
+            logger.info(f"  Confiança: {confidence_score}")
             
             logger.info(f"Item {item_id}: Modelo treinado com sucesso")
             logger.info(f"{'='*40}\n")
@@ -579,7 +632,8 @@ class ModeloAjustado:
                 lower = max(baseline * 0.5, prediction - z_score * adjusted_std)  # Garantir mínimo
                 upper = prediction + z_score * adjusted_std
                 
-                results.append({
+                # Criar resultado base
+                result = {
                     "item_id": item_id,
                     "ds": date.strftime("%Y-%m-%d %H:%M:%S"),
                     "yhat": round(prediction, 2),
@@ -589,7 +643,15 @@ class ModeloAjustado:
                     "yearly": round(seasonal_component, 2),
                     "weekly": 0.0,
                     "holidays": 0.0
-                })
+                }
+                
+                # Adicionar explicação se solicitado
+                if self.include_explanation:
+                    explanation = self._generate_explanation(item_id, result, date)
+                    if explanation:
+                        result["_explanation"] = explanation
+                
+                results.append(result)
             
             # Log dos resultados
             if results:
@@ -675,7 +737,7 @@ class ModeloAjustado:
                 quarter_name = f"Q{(first_month.month - 1) // 3 + 1}/{first_month.year}"
                 
                 # MANTER COMPATIBILIDADE: Usar os mesmos campos que previsões mensais
-                quarterly_results.append({
+                result = {
                     "item_id": item_id,
                     "ds": first_month.strftime("%Y-%m-%d %H:%M:%S"),  # Data de início do trimestre
                     "yhat": round(quarter_yhat, 2),
@@ -700,7 +762,15 @@ class ModeloAjustado:
                             for f in quarter_forecasts
                         ]
                     }
-                })
+                }
+                
+                # Adicionar explicação trimestral se solicitado
+                if self.include_explanation:
+                    explanation = self._generate_quarterly_explanation(item_id, result, first_month, quarter_forecasts)
+                    if explanation:
+                        result["_explanation"] = explanation
+                
+                quarterly_results.append(result)
                 
                 logger.info(f"Trimestre {quarter_name}: {quarter_yhat:.2f} (soma de 3 meses)")
             
@@ -723,3 +793,817 @@ class ModeloAjustado:
                 results.extend(quarterly_forecast)
         
         return results
+    
+    def _generate_explanation(self, item_id: int, prediction: Dict, date: pd.Timestamp) -> Dict:
+        """
+        Gera explicação detalhada para uma previsão específica
+        
+        Args:
+            item_id: ID do item
+            prediction: Dicionário com os valores da previsão
+            date: Data da previsão
+            
+        Returns:
+            Dicionário com explicações detalhadas
+        """
+        if item_id not in self.models or item_id not in self.quality_metrics:
+            return {}
+        
+        model = self.models[item_id]
+        metrics = self.quality_metrics[item_id]
+        
+        # Valores da previsão
+        yhat = prediction['yhat']
+        trend = prediction['trend']
+        yearly = prediction['yearly']
+        confidence_range = prediction['yhat_upper'] - prediction['yhat_lower']
+        
+        # Templates de explicação em português
+        explanations = {
+            "pt": {
+                "summary": self._generate_summary_pt(yhat, metrics, date),
+                "components": self._generate_components_explanation_pt(trend, yearly, model, date),
+                "data_quality": self._generate_data_quality_pt(metrics),
+                "confidence_explanation": self._generate_confidence_explanation_pt(confidence_range, metrics),
+                "factors_applied": self._generate_factors_explanation_pt(item_id, date, model),
+                "recommendations": self._generate_recommendations_pt(metrics)
+            },
+            "en": {
+                "summary": f"Prediction based on {metrics['data_points']} historical data points",
+                "components": {"trend_explanation": "Trend analysis", "seasonal_explanation": "Seasonal patterns"},
+                "data_quality": {"confidence": metrics['confidence_score']},
+                "confidence_explanation": f"Confidence interval: ±{confidence_range/2:.1f}",
+                "factors_applied": ["Seasonal adjustments applied"],
+                "recommendations": ["Monitor prediction accuracy"]
+            }
+        }
+        
+        lang = self.explanation_language
+        base_explanation = explanations.get(lang, explanations["pt"])
+        
+        # Gerar resumo HTML comum para todos os níveis
+        html_summary = self._generate_html_summary(item_id, prediction, date, layout=self.html_layout)
+        
+        # Filtrar por nível de explicação
+        if self.explanation_level == "basic":
+            return {
+                "html_summary": html_summary,  # CAMPO COMUM PARA TODOS
+                "summary": base_explanation["summary"],
+                "confidence": metrics['confidence_score'],
+                "main_factors": base_explanation["factors_applied"][:2]
+            }
+        elif self.explanation_level == "detailed":
+            return {
+                "html_summary": html_summary,  # CAMPO COMUM PARA TODOS
+                "summary": base_explanation["summary"],
+                "components": base_explanation["components"],
+                "confidence_explanation": base_explanation["confidence_explanation"],
+                "factors_applied": base_explanation["factors_applied"],
+                "data_quality_summary": {
+                    "historical_periods": metrics['data_points'],
+                    "confidence": metrics['confidence_score'],
+                    "accuracy": f"{100-metrics['mape']:.1f}%"
+                }
+            }
+        else:  # advanced
+            return {
+                "html_summary": html_summary,  # CAMPO COMUM PARA TODOS
+                "summary": base_explanation["summary"],
+                "components": base_explanation["components"],
+                "data_quality": base_explanation["data_quality"],
+                "confidence_explanation": base_explanation["confidence_explanation"],
+                "factors_applied": base_explanation["factors_applied"],
+                "recommendations": base_explanation["recommendations"],
+                "technical_metrics": {
+                    "mae": round(metrics['mae'], 2),
+                    "mape": f"{metrics['mape']:.1f}%",
+                    "r2": round(metrics['r2'], 3),
+                    "trend_strength": round(metrics['trend_strength'], 3),
+                    "seasonal_strength": round(metrics['seasonal_strength'], 3)
+                }
+            }
+    
+    def _generate_summary_pt(self, yhat: float, metrics: Dict, date: pd.Timestamp) -> str:
+        """Gera resumo em português"""
+        months = metrics['data_points']
+        confidence = metrics['confidence_score'].lower()
+        month_name = self._get_month_name_pt(date.month)  # Nome do mês em português
+        
+        return f"Previsão de {yhat:.0f} unidades para {month_name} baseada em {months} meses de histórico com confiança {confidence}."
+    
+    def _generate_components_explanation_pt(self, trend: float, yearly: float, model: Dict, date: pd.Timestamp) -> Dict:
+        """Explica os componentes da previsão em português"""
+        
+        # Explicação da tendência
+        b = model['b']
+        if abs(b) < 0.1:
+            trend_text = "Tendência estável sem crescimento significativo"
+        elif b > 0:
+            growth_monthly = b
+            growth_annual = growth_monthly * 12
+            trend_text = f"Tendência de crescimento de {growth_monthly:.1f} unidades por mês ({growth_annual:.1f} unidades/ano)"
+        else:
+            decline_monthly = abs(b)
+            decline_annual = decline_monthly * 12
+            trend_text = f"Tendência de declínio de {decline_monthly:.1f} unidades por mês ({decline_annual:.1f} unidades/ano)"
+        
+        # Explicação da sazonalidade
+        seasonal_factor = yearly / trend if trend != 0 else 0
+        month_num = date.month
+        month_name = self._get_month_name_pt(date.month)  # Nome do mês em português
+        
+        if self.seasonality_mode == "multiplicative":
+            if seasonal_factor > 0.1:
+                seasonal_text = f"{month_name} tem historicamente {seasonal_factor*100:.0f}% mais demanda que a média"
+            elif seasonal_factor < -0.1:
+                seasonal_text = f"{month_name} tem historicamente {abs(seasonal_factor)*100:.0f}% menos demanda que a média"
+            else:
+                seasonal_text = f"{month_name} tem demanda próxima à média histórica"
+        else:
+            if yearly > 1:
+                seasonal_text = f"{month_name} tem historicamente +{yearly:.0f} unidades acima da média"
+            elif yearly < -1:
+                seasonal_text = f"{month_name} tem historicamente {yearly:.0f} unidades abaixo da média"
+            else:
+                seasonal_text = f"{month_name} tem demanda próxima à média histórica"
+        
+        return {
+            "trend_explanation": trend_text,
+            "seasonal_explanation": seasonal_text,
+            "base_trend": f"Valor base da tendência: {trend:.1f}",
+            "seasonal_adjustment": f"Ajuste sazonal aplicado: {yearly:+.1f}"
+        }
+    
+    def _generate_data_quality_pt(self, metrics: Dict) -> Dict:
+        """Explica a qualidade dos dados em português"""
+        return {
+            "historical_periods": metrics['data_points'],
+            "training_period": f"Período de treino: {metrics['training_period']['start']} a {metrics['training_period']['end']}",
+            "outliers_detected": metrics['outlier_count'],
+            "data_completeness": f"{metrics['data_completeness']:.1f}%",
+            "seasonal_variation": "Alta" if metrics['seasonal_strength'] > 0.5 else "Média" if metrics['seasonal_strength'] > 0.2 else "Baixa",
+            "trend_consistency": "Alta" if metrics['trend_strength'] < 0.3 else "Média" if metrics['trend_strength'] < 0.6 else "Baixa",
+            "overall_quality": metrics['confidence_score'],
+            "accuracy_metrics": {
+                "mae": f"Erro médio absoluto: {metrics['mae']:.1f} unidades",
+                "mape": f"Erro percentual médio: {metrics['mape']:.1f}%",
+                "r2": f"Coeficiente de determinação: {metrics['r2']:.3f}"
+            }
+        }
+    
+    def _generate_confidence_explanation_pt(self, confidence_range: float, metrics: Dict) -> str:
+        """Explica o intervalo de confiança em português"""
+        range_pct = (confidence_range / 2) / max(metrics.get('mae', 1), 1) * 100
+        
+        if range_pct < 20:
+            certainty = "alta precisão"
+        elif range_pct < 40:
+            certainty = "precisão moderada"
+        else:
+            certainty = "alta variabilidade"
+            
+        return f"Intervalo de ±{confidence_range/2:.0f} unidades baseado na variabilidade histórica com {certainty}"
+    
+    def _generate_factors_explanation_pt(self, item_id: int, date: pd.Timestamp, model: Dict) -> List[str]:
+        """Lista os fatores aplicados na previsão"""
+        factors = []
+        
+        # Fatores sazonais
+        month = date.month
+        seasonal_pattern = model.get('seasonal_pattern', {})
+        if month in seasonal_pattern:
+            factor = seasonal_pattern[month]
+            if self.seasonality_mode == "multiplicative":
+                month_name = self._get_month_name_pt(date.month)
+                if factor > 1.05:
+                    factors.append(f"Fator sazonal {month_name}: +{(factor-1)*100:.0f}% acima da média")
+                elif factor < 0.95:
+                    factors.append(f"Fator sazonal {month_name}: {(1-factor)*100:.0f}% abaixo da média")
+                else:
+                    factors.append(f"Sazonalidade {month_name}: próxima à média anual")
+        
+        # Ajustes manuais
+        if self.month_adjustments and month in self.month_adjustments:
+            adj = self.month_adjustments[month]
+            if adj != 1.0:
+                month_name = self._get_month_name_pt(date.month)
+                factors.append(f"Ajuste manual para {month_name}: {(adj-1)*100:+.0f}%")
+        
+        # Fator de crescimento global
+        if self.growth_factor != 1.0:
+            factors.append(f"Fator de crescimento global: {(self.growth_factor-1)*100:+.0f}%")
+        
+        # Verificar feriados
+        if self.feriados_enabled:
+            date_str = date.strftime("%Y-%m-%d")
+            if hasattr(self, 'feriados'):
+                is_holiday, desc = self.feriados.verificar_feriado(date)
+                if is_holiday and date_str in self.feriados_adjustments:
+                    adj = self.feriados_adjustments[date_str]
+                    factors.append(f"Feriado {desc}: {(adj-1)*100:+.0f}%")
+        
+        # Padrão de dia da semana (se aplicável)
+        if self.freq == 'D' and self.day_of_week_adjustments:
+            weekday = date.weekday()
+            if weekday in self.day_of_week_adjustments:
+                adj = self.day_of_week_adjustments[weekday]
+                day_name = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'][weekday]
+                if adj != 1.0:
+                    factors.append(f"Padrão {day_name}: {(adj-1)*100:+.0f}%")
+        
+        if not factors:
+            factors.append("Previsão baseada apenas em tendência e sazonalidade histórica")
+            
+        return factors
+    
+    def _generate_recommendations_pt(self, metrics: Dict) -> List[str]:
+        """Gera recomendações baseadas nas métricas"""
+        recommendations = []
+        
+        if metrics['confidence_score'] == "Alta":
+            recommendations.append("Previsão de alta confiança devido a dados históricos consistentes")
+        elif metrics['confidence_score'] == "Média":
+            recommendations.append("Previsão com confiança moderada - monitore fatores externos")
+        else:
+            recommendations.append("Previsão de baixa confiança - considere coletar mais dados históricos")
+        
+        if metrics['outlier_count'] > 0:
+            recommendations.append(f"{metrics['outlier_count']} outliers foram removidos dos dados de treino")
+        
+        if metrics['data_points'] < 6:
+            recommendations.append("Poucos dados históricos - a precisão pode melhorar com mais observações")
+        
+        if metrics['seasonal_strength'] > 0.8:
+            recommendations.append("Forte padrão sazonal detectado - considere fatores sazonais específicos")
+        
+        if metrics['r2'] < 0.5:
+            recommendations.append("Baixa capacidade explicativa - pode haver fatores externos relevantes")
+        
+        recommendations.append("Considere validar previsões com conhecimento do negócio")
+        
+        return recommendations
+    
+    def _get_month_name_pt(self, month_num: int) -> str:
+        """Retorna nome do mês em português"""
+        months_pt = {
+            1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+            5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto", 
+            9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+        }
+        return months_pt.get(month_num, f"Mês {month_num}")
+    
+    def _generate_html_summary(self, item_id: int, prediction: Dict, date: pd.Timestamp, 
+                              is_quarterly: bool = False, quarterly_info: Dict = None, layout: str = "full") -> str:
+        """
+        Gera resumo HTML formatado comum para todas as explicações
+        
+        Args:
+            item_id: ID do item
+            prediction: Dicionário com valores da previsão
+            date: Data da previsão
+            is_quarterly: Se é previsão trimestral
+            quarterly_info: Informações adicionais do trimestre
+            layout: Layout do HTML ('full' ou 'compact')
+            
+        Returns:
+            String HTML formatada com resumo completo
+        """
+        if item_id not in self.models or item_id not in self.quality_metrics:
+            return "<p><strong>❌ Informações insuficientes para gerar resumo</strong></p>"
+        
+        model = self.models[item_id]
+        metrics = self.quality_metrics[item_id]
+        
+        # Valores da previsão
+        yhat = prediction['yhat']
+        trend = prediction['trend']
+        yearly = prediction['yearly']
+        yhat_lower = prediction['yhat_lower']
+        yhat_upper = prediction['yhat_upper']
+        confidence_range = yhat_upper - yhat_lower
+        
+        # Informações do período
+        if is_quarterly and quarterly_info:
+            period_name = quarterly_info.get('quarter_name', 'Período')
+            period_type = "trimestre"
+            month_details = quarterly_info.get('monthly_details', [])
+        else:
+            month_name = self._get_month_name_pt(date.month)
+            year = date.year
+            period_name = f"{month_name}/{year}"
+            period_type = "mês"
+            month_details = []
+        
+        # Análise de confiança
+        confidence = metrics['confidence_score']
+        confidence_color = "#28a745" if confidence == "Alta" else "#ffc107" if confidence == "Média" else "#dc3545"
+        
+        # Escolher layout baseado no parâmetro
+        if layout == "compact":
+            return self._generate_compact_html(
+                item_id, prediction, date, is_quarterly, quarterly_info, 
+                model, metrics, period_name, period_type, confidence, confidence_color
+            )
+        
+        # HTML formatado (layout completo)
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #f8f9fa;">
+            
+            <!-- Cabeçalho Principal -->
+            <div style="text-align: center; margin-bottom: 25px; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px;">
+                <h2 style="margin: 0; font-size: 24px;">📊 Explicação da Previsão</h2>
+                <p style="margin: 8px 0 0 0; font-size: 16px; opacity: 0.9;">Item {item_id} • {period_name}</p>
+            </div>
+            
+            <!-- Resultado Principal -->
+            <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                    <div>
+                        <h3 style="margin: 0 0 10px 0; color: #333; font-size: 20px;">🎯 Previsão para o {period_type}</h3>
+                        <p style="margin: 0; font-size: 32px; font-weight: bold; color: #2c3e50;">{yhat:,.0f} unidades</p>
+                        <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">
+                            Intervalo: {yhat_lower:,.0f} - {yhat_upper:,.0f} unidades (±{confidence_range/2:,.0f})
+                        </p>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="background-color: {confidence_color}; color: white; padding: 10px 20px; border-radius: 20px; font-weight: bold;">
+                            Confiança: {confidence}
+                        </div>
+                        <p style="margin: 8px 0 0 0; font-size: 12px; color: #666;">
+                            Baseado em {metrics['data_points']} períodos históricos
+                        </p>
+                    </div>
+                </div>
+            </div>
+        """
+        
+        # Detalhamento mensal para trimestres
+        if is_quarterly and month_details:
+            html += """
+            <!-- Detalhamento Mensal (Trimestre) -->
+            <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">📅 Detalhamento Mensal</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            """
+            
+            for detail in month_details:
+                month_date = pd.to_datetime(detail['month'] + '-01')
+                month_name_pt = self._get_month_name_pt(month_date.month)
+                html += f"""
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #667eea;">
+                        <h4 style="margin: 0 0 8px 0; color: #333; font-size: 16px;">{month_name_pt}</h4>
+                        <p style="margin: 0; font-size: 20px; font-weight: bold; color: #2c3e50;">{detail['yhat']:,.0f}</p>
+                        <p style="margin: 3px 0 0 0; font-size: 12px; color: #666;">
+                            {detail['yhat_lower']:,.0f} - {detail['yhat_upper']:,.0f}
+                        </p>
+                    </div>
+                """
+            
+            html += "</div></div>"
+        
+        # Componentes da Previsão
+        html += f"""
+            <!-- Componentes da Previsão -->
+            <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">🔍 Como chegamos neste valor?</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                    
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 6px; border-left: 4px solid #2196f3;">
+                        <h4 style="margin: 0 0 8px 0; color: #1565c0; font-size: 16px;">📈 Tendência Base</h4>
+                        <p style="margin: 0; font-size: 18px; font-weight: bold; color: #0d47a1;">{trend:,.1f} unidades</p>
+        """
+        
+        # Explicação da tendência
+        b = model['b']
+        if abs(b) < 0.1:
+            trend_desc = "Estável - sem crescimento significativo"
+        elif b > 0:
+            trend_desc = f"Crescimento de {b:,.1f} un/mês ({b*12:,.1f} un/ano)"
+        else:
+            trend_desc = f"Declínio de {abs(b):,.1f} un/mês ({abs(b)*12:,.1f} un/ano)"
+        
+        html += f"""
+                        <p style="margin: 5px 0 0 0; font-size: 13px; color: #1565c0;">{trend_desc}</p>
+                    </div>
+                    
+                    <div style="background: #fff3e0; padding: 15px; border-radius: 6px; border-left: 4px solid #ff9800;">
+                        <h4 style="margin: 0 0 8px 0; color: #e65100; font-size: 16px;">🔄 Ajuste Sazonal</h4>
+                        <p style="margin: 0; font-size: 18px; font-weight: bold; color: #bf360c;">{yearly:+,.1f} unidades</p>
+        """
+        
+        # Explicação sazonal
+        if is_quarterly:
+            seasonal_desc = f"Padrão sazonal do {period_name}"
+        else:
+            month_name = self._get_month_name_pt(date.month)
+            if self.seasonality_mode == "multiplicative":
+                seasonal_pattern = model.get('seasonal_pattern', {})
+                factor = seasonal_pattern.get(date.month, 1.0)
+                if factor > 1.05:
+                    seasonal_desc = f"{month_name}: +{(factor-1)*100:.0f}% acima da média"
+                elif factor < 0.95:
+                    seasonal_desc = f"{month_name}: {(1-factor)*100:.0f}% abaixo da média"
+                else:
+                    seasonal_desc = f"{month_name}: próximo à média histórica"
+            else:
+                if yearly > 1:
+                    seasonal_desc = f"{month_name}: +{yearly:.0f} unidades acima da média"
+                elif yearly < -1:
+                    seasonal_desc = f"{month_name}: {yearly:.0f} unidades abaixo da média"
+                else:
+                    seasonal_desc = f"{month_name}: próximo à média histórica"
+        
+        html += f"""
+                        <p style="margin: 5px 0 0 0; font-size: 13px; color: #e65100;">{seasonal_desc}</p>
+                    </div>
+                </div>
+            </div>
+        """
+        
+        # Qualidade dos Dados
+        accuracy = 100 - metrics['mape']
+        accuracy_color = "#28a745" if accuracy > 85 else "#ffc107" if accuracy > 70 else "#dc3545"
+        
+        html += f"""
+            <!-- Qualidade dos Dados -->
+            <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">📊 Qualidade da Previsão</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    
+                    <div style="text-align: center; padding: 15px;">
+                        <div style="font-size: 28px; font-weight: bold; color: {accuracy_color};">{accuracy:.1f}%</div>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">Precisão Histórica</div>
+                    </div>
+                    
+                    <div style="text-align: center; padding: 15px;">
+                        <div style="font-size: 28px; font-weight: bold; color: #2c3e50;">{metrics['data_points']}</div>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">Períodos de Treino</div>
+                    </div>
+                    
+                    <div style="text-align: center; padding: 15px;">
+                        <div style="font-size: 28px; font-weight: bold; color: #6c757d;">{metrics['outlier_count']}</div>
+                        <div style="font-size: 14px; color: #666; margin-top: 5px;">Outliers Removidos</div>
+                    </div>
+                </div>
+            </div>
+        """
+        
+        # Fatores Aplicados
+        factors = self._generate_factors_explanation_pt(item_id, date, model)
+        if factors:
+            html += """
+            <!-- Fatores Aplicados -->
+            <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">⚙️ Fatores Considerados</h3>
+                <ul style="margin: 0; padding-left: 20px; line-height: 1.6;">
+            """
+            
+            for factor in factors[:5]:  # Mostrar até 5 fatores
+                html += f"<li style='margin-bottom: 8px; color: #495057;'>{factor}</li>"
+            
+            html += "</ul></div>"
+        
+        # Recomendações
+        recommendations = self._generate_recommendations_pt(metrics)
+        if recommendations:
+            html += """
+            <!-- Recomendações -->
+            <div style="background: #fff8e1; padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid #ffc107;">
+                <h3 style="margin: 0 0 15px 0; color: #f57c00; font-size: 18px;">💡 Recomendações</h3>
+                <ul style="margin: 0; padding-left: 20px; line-height: 1.6;">
+            """
+            
+            for rec in recommendations[:3]:  # Mostrar até 3 recomendações mais importantes
+                html += f"<li style='margin-bottom: 8px; color: #e65100;'>{rec}</li>"
+            
+            html += "</ul></div>"
+        
+        # Rodapé
+        training_start = metrics['training_period']['start']
+        training_end = metrics['training_period']['end']
+        
+        html += f"""
+            <!-- Informações Técnicas -->
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; border: 1px solid #dee2e6;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; font-size: 12px; color: #6c757d;">
+                    <div>
+                        <strong>Período de treino:</strong> {training_start} a {training_end}
+                    </div>
+                    <div>
+                        <strong>Modelo:</strong> {self.seasonality_mode.title()} • 
+                        <strong>MAPE:</strong> {metrics['mape']:.1f}% • 
+                        <strong>R²:</strong> {metrics['r2']:.3f}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+        
+        return html.strip()
+    
+    def _generate_compact_html(self, item_id: int, prediction: Dict, date: pd.Timestamp,
+                              is_quarterly: bool, quarterly_info: Dict, model: Dict, metrics: Dict,
+                              period_name: str, period_type: str, confidence: str, confidence_color: str) -> str:
+        """
+        Gera HTML compacto otimizado para popups
+        
+        Args:
+            Parâmetros necessários para gerar o HTML compacto
+            
+        Returns:
+            String HTML compacta formatada para popups
+        """
+        # Valores da previsão
+        yhat = prediction['yhat']
+        trend = prediction['trend']
+        yearly = prediction['yearly']
+        yhat_lower = prediction['yhat_lower']
+        yhat_upper = prediction['yhat_upper']
+        confidence_range = yhat_upper - yhat_lower
+        
+        # Explicação da tendência (simplificada)
+        b = model['b']
+        if abs(b) < 0.1:
+            trend_desc = "Estável"
+        elif b > 0:
+            trend_desc = f"+{b:.1f}/mês"
+        else:
+            trend_desc = f"{b:.1f}/mês"
+        
+        # Explicação sazonal (simplificada)
+        if is_quarterly:
+            seasonal_desc = f"Trimestre: {yearly:+.0f}"
+        else:
+            month_name = self._get_month_name_pt(date.month)
+            if yearly > 1:
+                seasonal_desc = f"{month_name}: +{yearly:.0f}"
+            elif yearly < -1:
+                seasonal_desc = f"{month_name}: {yearly:.0f}"
+            else:
+                seasonal_desc = f"{month_name}: normal"
+        
+        # Precisão
+        accuracy = 100 - metrics['mape']
+        
+        # HTML compacto para popup
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 400px; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+            
+            <!-- Cabeçalho Compacto -->
+            <div style="text-align: center; margin-bottom: 15px; padding: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 6px;">
+                <h3 style="margin: 0; font-size: 16px;">📊 Item {item_id}</h3>
+                <p style="margin: 3px 0 0 0; font-size: 13px; opacity: 0.9;">{period_name}</p>
+            </div>
+            
+            <!-- Resultado Principal Compacto -->
+            <div style="text-align: center; margin-bottom: 15px; padding: 15px; background: #f8f9fa; border-radius: 6px;">
+                <div style="font-size: 24px; font-weight: bold; color: #2c3e50; margin-bottom: 5px;">
+                    {yhat:,.0f} unidades
+                </div>
+                <div style="font-size: 11px; color: #666; margin-bottom: 8px;">
+                    {yhat_lower:,.0f} - {yhat_upper:,.0f} (±{confidence_range/2:,.0f})
+                </div>
+                <div style="display: inline-block; background-color: {confidence_color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: bold;">
+                    {confidence} • {accuracy:.0f}%
+                </div>
+            </div>
+        """
+        
+        # Detalhamento mensal compacto para trimestres
+        if is_quarterly and quarterly_info and quarterly_info.get('monthly_details'):
+            month_details = quarterly_info['monthly_details']
+            html += """
+            <!-- Meses do Trimestre -->
+            <div style="margin-bottom: 15px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #666; text-align: center;">Detalhamento Mensal</h4>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+            """
+            
+            for detail in month_details:
+                month_date = pd.to_datetime(detail['month'] + '-01')
+                month_name_pt = self._get_month_name_pt(month_date.month)[:3]  # Abreviado
+                html += f"""
+                    <div style="text-align: center; padding: 8px; background: #e3f2fd; border-radius: 4px; border-left: 3px solid #2196f3;">
+                        <div style="font-size: 10px; color: #1565c0; font-weight: bold;">{month_name_pt}</div>
+                        <div style="font-size: 14px; font-weight: bold; color: #0d47a1;">{detail['yhat']:,.0f}</div>
+                    </div>
+                """
+            
+            html += "</div></div>"
+        
+        # Componentes Compactos
+        html += f"""
+            <!-- Componentes Compactos -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                <div style="text-align: center; padding: 10px; background: #e3f2fd; border-radius: 6px; border-left: 3px solid #2196f3;">
+                    <div style="font-size: 11px; color: #1565c0; font-weight: bold;">📈 Tendência</div>
+                    <div style="font-size: 16px; font-weight: bold; color: #0d47a1;">{trend:,.0f}</div>
+                    <div style="font-size: 9px; color: #1565c0;">{trend_desc}</div>
+                </div>
+                
+                <div style="text-align: center; padding: 10px; background: #fff3e0; border-radius: 6px; border-left: 3px solid #ff9800;">
+                    <div style="font-size: 11px; color: #e65100; font-weight: bold;">🔄 Sazonal</div>
+                    <div style="font-size: 16px; font-weight: bold; color: #bf360c;">{yearly:+.0f}</div>
+                    <div style="font-size: 9px; color: #e65100;">{seasonal_desc}</div>
+                </div>
+            </div>
+        """
+        
+        # Fatores principais (máximo 2)
+        factors = self._generate_factors_explanation_pt(item_id, date, model)
+        if factors:
+            html += """
+            <!-- Fatores Principais -->
+            <div style="margin-bottom: 15px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #666;">⚙️ Principais Fatores</h4>
+                <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; border-left: 3px solid #6c757d;">
+            """
+            
+            for factor in factors[:2]:  # Máximo 2 fatores
+                html += f"<div style='font-size: 11px; color: #495057; margin-bottom: 4px;'>• {factor}</div>"
+            
+            html += "</div></div>"
+        
+        # Recomendação principal
+        recommendations = self._generate_recommendations_pt(metrics)
+        if recommendations:
+            main_rec = recommendations[0]  # Apenas a primeira recomendação
+            html += f"""
+            <!-- Recomendação Principal -->
+            <div style="background: #fff8e1; padding: 10px; border-radius: 6px; border-left: 3px solid #ffc107;">
+                <div style="font-size: 11px; color: #f57c00; font-weight: bold; margin-bottom: 4px;">💡 Recomendação</div>
+                <div style="font-size: 10px; color: #e65100; line-height: 1.4;">{main_rec}</div>
+            </div>
+            """
+        
+        # Rodapé compacto
+        html += f"""
+            <!-- Rodapé Compacto -->
+            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #dee2e6; text-align: center;">
+                <div style="font-size: 9px; color: #6c757d;">
+                    {metrics['data_points']} períodos • MAPE: {metrics['mape']:.1f}% • R²: {metrics['r2']:.2f}
+                </div>
+            </div>
+        </div>
+        """
+        
+        return html.strip()
+    
+    def _generate_quarterly_explanation(self, item_id: int, quarterly_result: Dict, 
+                                       quarter_start: pd.Timestamp, monthly_forecasts: List[Dict]) -> Dict:
+        """
+        Gera explicação específica para previsões trimestrais
+        
+        Args:
+            item_id: ID do item
+            quarterly_result: Resultado da previsão trimestral
+            quarter_start: Data de início do trimestre
+            monthly_forecasts: Lista das previsões mensais que compõem o trimestre
+            
+        Returns:
+            Dicionário com explicações da previsão trimestral
+        """
+        if item_id not in self.models or item_id not in self.quality_metrics:
+            return {}
+        
+        metrics = self.quality_metrics[item_id]
+        quarter_info = quarterly_result.get('_quarter_info', {})
+        quarter_name = quarter_info.get('quarter_name', 'N/A')
+        
+        # Análise das previsões mensais
+        monthly_values = [f['yhat'] for f in monthly_forecasts]
+        monthly_trends = [f['trend'] for f in monthly_forecasts]
+        monthly_seasonals = [f['yearly'] for f in monthly_forecasts]
+        
+        monthly_avg = sum(monthly_values) / len(monthly_values)
+        trend_variation = max(monthly_trends) - min(monthly_trends)
+        seasonal_variation = max(monthly_seasonals) - min(monthly_seasonals)
+        
+        # Gerar resumo HTML comum para todos os níveis (trimestral)
+        html_summary = self._generate_html_summary(
+            item_id, quarterly_result, quarter_start, 
+            is_quarterly=True, quarterly_info=quarterly_result.get('_quarter_info', {}),
+            layout=self.html_layout
+        )
+        
+        if self.explanation_level == "basic":
+            return {
+                "html_summary": html_summary,  # CAMPO COMUM PARA TODOS
+                "summary": f"Previsão de {quarterly_result['yhat']:.0f} unidades para o {quarter_name} (soma de 3 meses)",
+                "confidence": metrics['confidence_score'],
+                "monthly_average": f"Média mensal: {monthly_avg:.0f} unidades",
+                "main_insight": self._get_quarterly_main_insight(monthly_values, quarter_name)
+            }
+        
+        elif self.explanation_level == "detailed":
+            return {
+                "html_summary": html_summary,  # CAMPO COMUM PARA TODOS
+                "summary": f"Previsão trimestral de {quarterly_result['yhat']:.0f} unidades para {quarter_name}",
+                "quarterly_breakdown": {
+                    "total_quarter": quarterly_result['yhat'],
+                    "monthly_average": round(monthly_avg, 1),
+                    "strongest_month": f"{monthly_forecasts[monthly_values.index(max(monthly_values))]['ds'][:7]}: {max(monthly_values):.0f}",
+                    "weakest_month": f"{monthly_forecasts[monthly_values.index(min(monthly_values))]['ds'][:7]}: {min(monthly_values):.0f}"
+                },
+                "seasonal_analysis": self._analyze_quarterly_seasonality(monthly_forecasts, quarter_name),
+                "trend_analysis": f"Variação de tendência no trimestre: {trend_variation:.1f} unidades",
+                "confidence_explanation": f"Intervalo trimestral: ±{(quarterly_result['yhat_upper'] - quarterly_result['yhat_lower'])/2:.0f} unidades",
+                "data_quality_summary": {
+                    "historical_periods": metrics['data_points'],
+                    "confidence": metrics['confidence_score'],
+                    "accuracy": f"{100-metrics['mape']:.1f}%"
+                }
+            }
+        
+        else:  # advanced
+            return {
+                "html_summary": html_summary,  # CAMPO COMUM PARA TODOS
+                "summary": f"Análise avançada: Previsão trimestral de {quarterly_result['yhat']:.0f} unidades para {quarter_name}",
+                "quarterly_breakdown": {
+                    "total_quarter": quarterly_result['yhat'],
+                    "monthly_values": [round(v, 1) for v in monthly_values],
+                    "monthly_trends": [round(t, 1) for t in monthly_trends],
+                    "monthly_seasonals": [round(s, 1) for s in monthly_seasonals],
+                    "monthly_average": round(monthly_avg, 1),
+                    "monthly_std": round(np.std(monthly_values), 1),
+                    "coefficient_variation": f"{(np.std(monthly_values)/monthly_avg)*100:.1f}%"
+                },
+                "trend_analysis": {
+                    "quarterly_trend": quarterly_result['trend'],
+                    "trend_variation": round(trend_variation, 2),
+                    "trend_consistency": "Alta" if trend_variation < monthly_avg * 0.1 else "Baixa"
+                },
+                "seasonal_analysis": {
+                    "quarterly_seasonal": quarterly_result['yearly'],
+                    "seasonal_variation": round(seasonal_variation, 2),
+                    "dominant_pattern": self._identify_quarterly_pattern(monthly_seasonals)
+                },
+                "confidence_analysis": {
+                    "quarterly_interval": f"±{(quarterly_result['yhat_upper'] - quarterly_result['yhat_lower'])/2:.0f}",
+                    "relative_uncertainty": f"{((quarterly_result['yhat_upper'] - quarterly_result['yhat_lower'])/quarterly_result['yhat'])*100:.1f}%",
+                    "confidence_source": "Agregação dos intervalos mensais"
+                },
+                "technical_metrics": {
+                    "base_mae": round(metrics['mae'], 2),
+                    "base_mape": f"{metrics['mape']:.1f}%",
+                    "base_r2": round(metrics['r2'], 3),
+                    "aggregation_method": "Soma das previsões mensais",
+                    "seasonal_strength": round(metrics['seasonal_strength'], 3)
+                },
+                "recommendations": [
+                    f"Monitorar especialmente {monthly_forecasts[monthly_values.index(max(monthly_values))]['ds'][:7]} (mês de maior demanda)",
+                    "Considerar fatores trimestrais específicos do negócio",
+                    "Validar com dados de trimestres anteriores similares"
+                ]
+            }
+    
+    def _get_quarterly_main_insight(self, monthly_values: List[float], quarter_name: str) -> str:
+        """Gera insight principal para explicação básica trimestral"""
+        if len(monthly_values) < 3:
+            return "Dados insuficientes para análise"
+        
+        variation = (max(monthly_values) - min(monthly_values)) / np.mean(monthly_values)
+        
+        if variation < 0.1:
+            return f"Demanda estável ao longo do {quarter_name}"
+        elif variation < 0.3:
+            return f"Pequena variação mensal no {quarter_name}"
+        else:
+            peak_month = monthly_values.index(max(monthly_values)) + 1
+            month_names = ["primeiro", "segundo", "terceiro"]
+            return f"Pico de demanda esperado no {month_names[peak_month-1]} mês do {quarter_name}"
+    
+    def _analyze_quarterly_seasonality(self, monthly_forecasts: List[Dict], quarter_name: str) -> str:
+        """Analisa padrão sazonal dentro do trimestre"""
+        seasonal_values = [f['yearly'] for f in monthly_forecasts]
+        
+        if len(seasonal_values) < 3:
+            return "Análise sazonal indisponível"
+        
+        if max(seasonal_values) - min(seasonal_values) < 1:
+            return f"Padrão sazonal uniforme no {quarter_name}"
+        
+        peak_index = seasonal_values.index(max(seasonal_values))
+        months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
+                 "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+        
+        # Determinar mês baseado na data
+        first_month_num = pd.to_datetime(monthly_forecasts[0]['ds']).month - 1
+        peak_month = months[first_month_num + peak_index]
+        
+        return f"Sazonalidade mais forte em {peak_month} dentro do {quarter_name}"
+    
+    def _identify_quarterly_pattern(self, seasonal_values: List[float]) -> str:
+        """Identifica padrão dominante no trimestre"""
+        if len(seasonal_values) < 3:
+            return "Padrão indeterminado"
+        
+        # Verificar se é crescente, decrescente ou variável
+        if seasonal_values[0] < seasonal_values[1] < seasonal_values[2]:
+            return "Crescente ao longo do trimestre"
+        elif seasonal_values[0] > seasonal_values[1] > seasonal_values[2]:
+            return "Decrescente ao longo do trimestre"
+        elif seasonal_values[1] > seasonal_values[0] and seasonal_values[1] > seasonal_values[2]:
+            return "Pico no meio do trimestre"
+        else:
+            return "Padrão variável"
