@@ -918,22 +918,32 @@ class ModeloAjustado:
             trend_text = f"Tendência de declínio de {decline_monthly:.1f} unidades por mês ({decline_annual:.1f} unidades/ano)"
         
         # Explicação da sazonalidade
-        seasonal_factor = yearly / trend if trend != 0 else 0
         month_num = date.month
         month_name = self._get_month_name_pt(date.month)  # Nome do mês em português
         
         if self.seasonality_mode == "multiplicative":
-            if seasonal_factor > 0.1:
-                seasonal_text = f"{month_name} tem historicamente {seasonal_factor*100:.0f}% mais demanda que a média"
-            elif seasonal_factor < -0.1:
-                seasonal_text = f"{month_name} tem historicamente {abs(seasonal_factor)*100:.0f}% menos demanda que a média"
+            seasonal_pattern = model.get('seasonal_pattern', {})
+            # Tentar acessar com chave inteira primeiro, depois string (compatibilidade)
+            factor = seasonal_pattern.get(date.month, seasonal_pattern.get(str(date.month), 1.0))
+            
+            if factor > 1.05:
+                seasonal_text = f"{month_name} tem historicamente {(factor-1)*100:.0f}% mais demanda que a média"
+            elif factor < 0.95:
+                seasonal_text = f"{month_name} tem historicamente {(1-factor)*100:.0f}% menos demanda que a média"
             else:
-                seasonal_text = f"{month_name} tem demanda próxima à média histórica"
-        else:
-            if yearly > 1:
-                seasonal_text = f"{month_name} tem historicamente +{yearly:.0f} unidades acima da média"
-            elif yearly < -1:
-                seasonal_text = f"{month_name} tem historicamente {yearly:.0f} unidades abaixo da média"
+                # Mesmo quando próximo da média, mostrar o percentual exato se significativo
+                if abs(yearly) > 10:
+                    percentage_change = (factor - 1) * 100
+                    seasonal_text = f"{month_name} tem {percentage_change:+.1f}% da demanda média"
+                else:
+                    seasonal_text = f"{month_name} tem demanda próxima à média histórica"
+        else:  # additive
+            if yearly > 10:
+                percentage = (yearly / trend) * 100 if trend > 0 else 0
+                seasonal_text = f"{month_name} tem historicamente +{yearly:.0f} unidades acima da média (+{percentage:.0f}%)"
+            elif yearly < -10:
+                percentage = abs(yearly / trend) * 100 if trend > 0 else 0
+                seasonal_text = f"{month_name} tem historicamente {yearly:.0f} unidades abaixo da média (-{percentage:.0f}%)"
             else:
                 seasonal_text = f"{month_name} tem demanda próxima à média histórica"
         
@@ -981,8 +991,9 @@ class ModeloAjustado:
         # Fatores sazonais
         month = date.month
         seasonal_pattern = model.get('seasonal_pattern', {})
-        if month in seasonal_pattern:
-            factor = seasonal_pattern[month]
+        # Verificar se existe com chave inteira ou string
+        factor = seasonal_pattern.get(month, seasonal_pattern.get(str(month)))
+        if factor is not None:
             if self.seasonality_mode == "multiplicative":
                 month_name = self._get_month_name_pt(date.month)
                 if factor > 1.05:
@@ -1208,20 +1219,29 @@ class ModeloAjustado:
             month_name = self._get_month_name_pt(date.month)
             if self.seasonality_mode == "multiplicative":
                 seasonal_pattern = model.get('seasonal_pattern', {})
-                factor = seasonal_pattern.get(date.month, 1.0)
+                # Tentar acessar com chave inteira primeiro, depois string (compatibilidade)
+                factor = seasonal_pattern.get(date.month, seasonal_pattern.get(str(date.month), 1.0))
                 if factor > 1.05:
-                    seasonal_desc = f"{month_name}: +{(factor-1)*100:.0f}% acima da média"
+                    seasonal_desc = f"{month_name}: +{(factor-1)*100:.0f}% acima da média ({yearly:+.0f} unidades)"
                 elif factor < 0.95:
-                    seasonal_desc = f"{month_name}: {(1-factor)*100:.0f}% abaixo da média"
+                    seasonal_desc = f"{month_name}: {(1-factor)*100:.0f}% abaixo da média ({yearly:+.0f} unidades)"
                 else:
-                    seasonal_desc = f"{month_name}: próximo à média histórica"
-            else:
-                if yearly > 1:
-                    seasonal_desc = f"{month_name}: +{yearly:.0f} unidades acima da média"
-                elif yearly < -1:
-                    seasonal_desc = f"{month_name}: {yearly:.0f} unidades abaixo da média"
+                    # Mesmo quando está "próximo à média", mostrar o valor se for significativo
+                    if abs(yearly) > 10:  # Se o ajuste for significativo (>10 unidades)
+                        percentage_change = (factor - 1) * 100
+                        seasonal_desc = f"{month_name}: {percentage_change:+.1f}% da média ({yearly:+.0f} unidades)"
+                    else:
+                        seasonal_desc = f"{month_name}: próximo à média histórica ({yearly:+.0f} unidades)"
+            else:  # additive
+                if yearly > 10:
+                    # Calcular percentual baseado na tendência base
+                    percentage = (yearly / trend) * 100 if trend > 0 else 0
+                    seasonal_desc = f"{month_name}: +{yearly:.0f} unidades acima da média (+{percentage:.0f}%)"
+                elif yearly < -10:
+                    percentage = abs(yearly / trend) * 100 if trend > 0 else 0
+                    seasonal_desc = f"{month_name}: {yearly:.0f} unidades abaixo da média (-{percentage:.0f}%)"
                 else:
-                    seasonal_desc = f"{month_name}: próximo à média histórica"
+                    seasonal_desc = f"{month_name}: próximo à média histórica ({yearly:+.0f} unidades)"
         
         html += f"""
                         <p style="margin: 5px 0 0 0; font-size: 13px; color: #e65100;">{seasonal_desc}</p>
@@ -1345,12 +1365,21 @@ class ModeloAjustado:
             seasonal_desc = f"Trimestre: {yearly:+.0f}"
         else:
             month_name = self._get_month_name_pt(date.month)
-            if yearly > 1:
-                seasonal_desc = f"{month_name}: +{yearly:.0f}"
-            elif yearly < -1:
-                seasonal_desc = f"{month_name}: {yearly:.0f}"
-            else:
-                seasonal_desc = f"{month_name}: normal"
+            if self.seasonality_mode == "multiplicative":
+                seasonal_pattern = model.get('seasonal_pattern', {})
+                # Tentar acessar com chave inteira primeiro, depois string (compatibilidade)
+                factor = seasonal_pattern.get(date.month, seasonal_pattern.get(str(date.month), 1.0))
+                if abs(yearly) > 10:  # Se o ajuste for significativo
+                    percentage_change = (factor - 1) * 100
+                    seasonal_desc = f"{month_name}: {percentage_change:+.0f}%"
+                else:
+                    seasonal_desc = f"{month_name}: normal"
+            else:  # additive
+                if abs(yearly) > 10:
+                    percentage = (yearly / trend) * 100 if trend > 0 else 0
+                    seasonal_desc = f"{month_name}: {percentage:+.0f}%"
+                else:
+                    seasonal_desc = f"{month_name}: normal"
         
         # Precisão
         accuracy = 100 - metrics['mape']
@@ -1665,7 +1694,17 @@ class ModeloAjustado:
             }),
             "trend_slope": model.get('b', 0),
             "seasonal_pattern": model.get('seasonal_pattern', {}),
-            "std": model.get('std', 10)
+            "std": model.get('std', 10),
+            # NOVOS CAMPOS ESSENCIAIS PARA HTML
+            "seasonality_mode": self.seasonality_mode,
+            "model_baseline": model.get('baseline', 0),
+            "model_mean": model.get('mean', 0),
+            "day_of_week_pattern": model.get('day_of_week_pattern', {}),
+            "month_adjustments": self.month_adjustments,
+            "day_of_week_adjustments": self.day_of_week_adjustments,
+            "growth_factor": self.growth_factor,
+            "confidence_level": self.confidence_level,
+            "freq": self.freq
         }
         
         # Dados completos para geração de HTML

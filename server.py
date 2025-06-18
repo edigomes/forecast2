@@ -465,21 +465,54 @@ def generate_html():
         logger.info(f"Trimestral: {is_quarterly}")
         
         # Criar um modelo temporário apenas para acessar as funções de geração de HTML
-        # Vamos usar dados fictícios mínimos para inicialização
+        # Recuperar configurações salvas no explanation_data
+        seasonality_mode = explanation_data.get('seasonality_mode', 'multiplicative')
+        freq = explanation_data.get('freq', 'MS')
+        month_adjustments = explanation_data.get('month_adjustments', {})
+        day_of_week_adjustments = explanation_data.get('day_of_week_adjustments', {})
+        growth_factor = explanation_data.get('growth_factor', 1.0)
+        confidence_level = explanation_data.get('confidence_level', 0.95)
+        
+        logger.info(f"Configurações recuperadas:")
+        logger.info(f"  seasonality_mode: {seasonality_mode}")
+        logger.info(f"  freq: {freq}")
+        logger.info(f"  month_adjustments: {month_adjustments}")
+        
+        # Debug: verificar seasonal_pattern
+        seasonal_pattern = explanation_data.get('seasonal_pattern', {})
+        logger.info(f"  seasonal_pattern: {seasonal_pattern}")
+        if seasonal_pattern:
+            logger.info(f"  Fator para mês {date.month}: {seasonal_pattern.get(date.month, 'NÃO ENCONTRADO')}")
+        
+        # Debug: verificar prediction
+        logger.info(f"Dados da previsão:")
+        logger.info(f"  Data: {date}")
+        logger.info(f"  Mês: {date.month}")
+        logger.info(f"  Trend: {prediction.get('trend')}")
+        logger.info(f"  Yearly: {prediction.get('yearly')}")
+        logger.info(f"  Yhat: {prediction.get('yhat')}")
+        
         modelo_temp = ModeloAjustado(
             granularity='M',
+            seasonality_mode=seasonality_mode,
             include_explanation=True,
             explanation_level='detailed',
             explanation_language='pt',
-            html_layout=layout
+            html_layout=layout,
+            month_adjustments=month_adjustments,
+            day_of_week_adjustments=day_of_week_adjustments,
+            growth_factor=growth_factor,
+            confidence_level=confidence_level
         )
         
-        # Criar dados mínimos do modelo e métricas (simulados a partir dos dados de explicação)
+        # Criar dados completos do modelo e métricas (simulados a partir dos dados de explicação)
         model_data = {
             'b': explanation_data.get('trend_slope', 0),  # Slope da tendência
             'seasonal_pattern': explanation_data.get('seasonal_pattern', {}),
+            'day_of_week_pattern': explanation_data.get('day_of_week_pattern', {}),
             'mean': prediction.get('yhat', 100),
-            'std': explanation_data.get('std', 10)
+            'std': explanation_data.get('std', 10),
+            'baseline': explanation_data.get('model_baseline', prediction.get('trend', 100) * 0.5)
         }
         
         metrics_data = {
