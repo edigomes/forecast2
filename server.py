@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS
+#from flask_cors import CORS
 import pandas as pd
 import logging
 import json
@@ -10,13 +10,13 @@ from feriados_brasil import FeriadosBrasil
 app = Flask(__name__)
 
 # Configurar CORS para permitir requests de qualquer URL
-CORS(app, resources={
-    r"/*": {
-        "origins": "*",  # Permite qualquer origem
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Métodos permitidos
-        "allow_headers": ["Content-Type", "Accept", "Authorization", "X-Requested-With"]  # Headers permitidos
-    }
-})
+#CORS(app, resources={
+#    r"/*": {
+#        "origins": "*",  # Permite qualquer origem
+#        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Métodos permitidos
+#        "allow_headers": ["Content-Type", "Accept", "Authorization", "X-Requested-With"]  # Headers permitidos
+#    }
+#})
 
 logging.basicConfig(
     level=logging.INFO,
@@ -592,6 +592,6 @@ def generate_html():
             return jsonify({"error": f"Falha na geração de HTML: {str(ex)}"}), 500
 
 if __name__ == "__main__":
-    logger.info("🌐 CORS configurado para permitir requests de qualquer URL")
+    #logger.info("🌐 CORS configurado para permitir requests de qualquer URL")
     logger.info("📡 Servidor iniciando na porta 5000...")
     app.run(debug=True, port=5000, host='127.0.0.1')
