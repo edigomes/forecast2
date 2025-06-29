@@ -652,7 +652,7 @@ class ModeloAjustado:
                         result["_explanation"] = explanation
                 
                 # NOVO: Adicionar dados para geração de HTML (sempre presente)
-                html_data = self._generate_html_data(item_id, result, date, is_quarterly=False)
+                html_data = self._generate_html_data(item_id, result, date, is_quarterly=False, is_semiannual=False)
                 if html_data:
                     result["_html_data"] = html_data
                 
@@ -776,7 +776,7 @@ class ModeloAjustado:
                         result["_explanation"] = explanation
                 
                 # NOVO: Adicionar dados para geração de HTML trimestral (sempre presente)
-                html_data = self._generate_html_data(item_id, result, first_month, is_quarterly=True, quarterly_info=result.get('_quarter_info'))
+                html_data = self._generate_html_data(item_id, result, first_month, is_quarterly=True, quarterly_info=result.get('_quarter_info'), is_semiannual=False)
                 if html_data:
                     result["_html_data"] = html_data
                 
@@ -801,6 +801,126 @@ class ModeloAjustado:
             quarterly_forecast = self.predict_quarterly(item_id, start_date, periods)
             if quarterly_forecast:
                 results.extend(quarterly_forecast)
+        
+        return results
+    
+    def predict_semiannually(self, item_id: int, start_date: str, periods: int) -> Optional[List[Dict]]:
+        """
+        Gera previsões agrupadas por semestre (6 em 6 meses)
+        
+        Args:
+            item_id: ID do item
+            start_date: Data de início das previsões
+            periods: Número de semestres para prever
+            
+        Returns:
+            Lista de previsões agrupadas por semestre
+        """
+        if item_id not in self.models:
+            logger.warning(f"Item {item_id}: Modelo não encontrado")
+            return None
+            
+        logger.info(f"\n{'='*40}")
+        logger.info(f"GERANDO PREVISÃO SEMESTRAL PARA ITEM {item_id}")
+        logger.info(f"{'-'*40}")
+        logger.info(f"Data de início: {start_date}")
+        logger.info(f"Semestres: {periods}")
+        
+        try:
+            # Gerar previsões mensais para o período correspondente
+            monthly_periods = periods * 6  # 6 meses por semestre
+            monthly_forecasts = self.predict(item_id, start_date, monthly_periods)
+            
+            if not monthly_forecasts:
+                return None
+            
+            # Agrupar por semestre
+            semiannual_results = []
+            
+            for semester in range(periods):
+                semester_start_idx = semester * 6
+                semester_end_idx = semester_start_idx + 6
+                
+                # Selecionar os 6 meses do semestre
+                semester_forecasts = monthly_forecasts[semester_start_idx:semester_end_idx]
+                
+                if not semester_forecasts:
+                    continue
+                
+                # Calcular dados agregados do semestre
+                semester_yhat = sum(f['yhat'] for f in semester_forecasts)
+                semester_lower = sum(f['yhat_lower'] for f in semester_forecasts)
+                semester_upper = sum(f['yhat_upper'] for f in semester_forecasts)
+                semester_trend = sum(f['trend'] for f in semester_forecasts)
+                semester_yearly = sum(f['yearly'] for f in semester_forecasts)
+                
+                # Data de início do semestre
+                first_month = pd.to_datetime(semester_forecasts[0]['ds'])
+                last_month = pd.to_datetime(semester_forecasts[-1]['ds'])
+                
+                # Nome do semestre
+                semester_name = f"S{1 if first_month.month <= 6 else 2}/{first_month.year}"
+                
+                # MANTER COMPATIBILIDADE: Usar os mesmos campos que previsões mensais
+                result = {
+                    "item_id": item_id,
+                    "ds": first_month.strftime("%Y-%m-%d %H:%M:%S"),  # Data de início do semestre
+                    "yhat": round(semester_yhat, 2),
+                    "yhat_lower": round(semester_lower, 2),
+                    "yhat_upper": round(semester_upper, 2),
+                    "trend": round(semester_trend, 2),
+                    "yearly": round(semester_yearly, 2),
+                    "weekly": 0.0,  # Manter compatibilidade
+                    "holidays": 0.0,  # Manter compatibilidade
+                    # Campos adicionais específicos para semestres (opcionais)
+                    "_semester_info": {  # Prefixo _ indica campos internos/adicionais
+                        "semester_name": semester_name,
+                        "start_date": first_month.strftime("%Y-%m-%d"),
+                        "end_date": last_month.strftime("%Y-%m-%d"),
+                        "monthly_details": [
+                            {
+                                "month": pd.to_datetime(f['ds']).strftime("%Y-%m"),
+                                "yhat": f['yhat'],
+                                "yhat_lower": f['yhat_lower'],
+                                "yhat_upper": f['yhat_upper']
+                            }
+                            for f in semester_forecasts
+                        ]
+                    }
+                }
+                
+                # Adicionar explicação semestral se solicitado
+                if self.include_explanation:
+                    explanation = self._generate_semiannual_explanation(item_id, result, first_month, semester_forecasts)
+                    if explanation:
+                        result["_explanation"] = explanation
+                
+                # NOVO: Adicionar dados para geração de HTML semestral (sempre presente)
+                html_data = self._generate_html_data(item_id, result, first_month, is_semiannual=True, semiannual_info=result.get('_semester_info'))
+                if html_data:
+                    result["_html_data"] = html_data
+                
+                semiannual_results.append(result)
+                
+                logger.info(f"Semestre {semester_name}: {semester_yhat:.2f} (soma de 6 meses)")
+            
+            logger.info(f"Previsão semestral gerada: {len(semiannual_results)} semestres")
+            logger.info(f"{'='*40}\n")
+            
+            return semiannual_results
+            
+        except Exception as e:
+            logger.exception(f"Erro ao gerar previsão semestral para item {item_id}")
+            raise ValueError(f"Falha ao gerar previsão semestral para item {item_id}: {str(e)}")
+    
+    def predict_semiannually_multiple(self, items: List[int], start_date: str, periods: int) -> List[Dict]:
+        """Gera previsões semestrais para múltiplos itens"""
+        results = []
+        
+        for item_id in items:
+            semiannual_forecast = self.predict_semiannually(item_id, start_date, periods)
+            if semiannual_forecast:
+                results.extend(semiannual_forecast)
         
         return results
     
@@ -1074,7 +1194,8 @@ class ModeloAjustado:
         return months_pt.get(month_num, f"Mês {month_num}")
     
     def _generate_html_summary(self, item_id: int, prediction: Dict, date: pd.Timestamp, 
-                              is_quarterly: bool = False, quarterly_info: Dict = None, layout: str = "full") -> str:
+                              is_quarterly: bool = False, quarterly_info: Dict = None,
+                              is_semiannual: bool = False, semiannual_info: Dict = None, layout: str = "full") -> str:
         """
         Gera resumo HTML formatado comum para todas as explicações
         
@@ -1108,6 +1229,10 @@ class ModeloAjustado:
             period_name = quarterly_info.get('quarter_name', 'Período')
             period_type = "trimestre"
             month_details = quarterly_info.get('monthly_details', [])
+        elif is_semiannual and semiannual_info:
+            period_name = semiannual_info.get('semester_name', 'Período')
+            period_type = "semestre"
+            month_details = semiannual_info.get('monthly_details', [])
         else:
             month_name = self._get_month_name_pt(date.month)
             year = date.year
@@ -1122,7 +1247,7 @@ class ModeloAjustado:
         # Escolher layout baseado no parâmetro
         if layout == "compact":
             return self._generate_compact_html(
-                item_id, prediction, date, is_quarterly, quarterly_info, 
+                item_id, prediction, date, is_quarterly, quarterly_info, is_semiannual, semiannual_info,
                 model, metrics, period_name, period_type, confidence, confidence_color
             )
         
@@ -1158,13 +1283,16 @@ class ModeloAjustado:
             </div>
         """
         
-        # Detalhamento mensal para trimestres
-        if is_quarterly and month_details:
-            html += """
-            <!-- Detalhamento Mensal (Trimestre) -->
+        # Detalhamento mensal para trimestres e semestres
+        if (is_quarterly or is_semiannual) and month_details:
+            title = "Detalhamento Mensal (Trimestre)" if is_quarterly else "Detalhamento Mensal (Semestre)"
+            grid_cols = "repeat(3, 1fr)" if is_quarterly else "repeat(auto-fit, minmax(150px, 1fr))"
+            
+            html += f"""
+            <!-- {title} -->
             <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">📅 Detalhamento Mensal</h3>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">📅 {title}</h3>
+                <div style="display: grid; grid-template-columns: {grid_cols}; gap: 15px;">
             """
             
             for detail in month_details:
@@ -1214,6 +1342,8 @@ class ModeloAjustado:
         
         # Explicação sazonal
         if is_quarterly:
+            seasonal_desc = f"Padrão sazonal do {period_name}"
+        elif is_semiannual:
             seasonal_desc = f"Padrão sazonal do {period_name}"
         else:
             month_name = self._get_month_name_pt(date.month)
@@ -1332,8 +1462,9 @@ class ModeloAjustado:
         return html.strip()
     
     def _generate_compact_html(self, item_id: int, prediction: Dict, date: pd.Timestamp,
-                              is_quarterly: bool, quarterly_info: Dict, model: Dict, metrics: Dict,
-                              period_name: str, period_type: str, confidence: str, confidence_color: str) -> str:
+                              is_quarterly: bool, quarterly_info: Dict, is_semiannual: bool, semiannual_info: Dict,
+                              model: Dict, metrics: Dict, period_name: str, period_type: str, 
+                              confidence: str, confidence_color: str) -> str:
         """
         Gera HTML compacto otimizado para popups
         
@@ -1408,14 +1539,24 @@ class ModeloAjustado:
             </div>
         """
         
-        # Detalhamento mensal compacto para trimestres
-        if is_quarterly and quarterly_info and quarterly_info.get('monthly_details'):
-            month_details = quarterly_info['monthly_details']
-            html += """
-            <!-- Meses do Trimestre -->
+        # Detalhamento mensal compacto para trimestres e semestres
+        if (is_quarterly and quarterly_info and quarterly_info.get('monthly_details')) or \
+           (is_semiannual and semiannual_info and semiannual_info.get('monthly_details')):
+            
+            if is_quarterly:
+                month_details = quarterly_info['monthly_details']
+                title = "Detalhamento Mensal"
+                grid_cols = "repeat(3, 1fr)"
+            else:  # is_semiannual
+                month_details = semiannual_info['monthly_details']
+                title = "Detalhamento Mensal"
+                grid_cols = "repeat(3, 1fr)"  # 3 colunas x 2 linhas para semestre
+            
+            html += f"""
+            <!-- Meses do {period_type.title()} -->
             <div style="margin-bottom: 15px;">
-                <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #666; text-align: center;">Detalhamento Mensal</h4>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #666; text-align: center;">{title}</h4>
+                <div style="display: grid; grid-template-columns: {grid_cols}; gap: 8px;">
             """
             
             for detail in month_details:
@@ -1648,7 +1789,8 @@ class ModeloAjustado:
             return "Padrão variável"
     
     def _generate_html_data(self, item_id: int, prediction: Dict, date: pd.Timestamp,
-                           is_quarterly: bool = False, quarterly_info: Dict = None) -> Dict:
+                           is_quarterly: bool = False, quarterly_info: Dict = None,
+                           is_semiannual: bool = False, semiannual_info: Dict = None) -> Dict:
         """
         Gera dados estruturados para geração de HTML posterior
         
@@ -1713,6 +1855,7 @@ class ModeloAjustado:
             "prediction": prediction_data,
             "explanation_data": explanation_data,
             "is_quarterly": is_quarterly,
+            "is_semiannual": is_semiannual,
             "date_iso": date.isoformat(),
             "timestamp": date.timestamp()
         }
@@ -1721,4 +1864,167 @@ class ModeloAjustado:
         if is_quarterly and quarterly_info:
             html_data["quarterly_info"] = quarterly_info
             
+        # Adicionar informações semestrais se aplicável
+        if is_semiannual and semiannual_info:
+            html_data["semiannual_info"] = semiannual_info
+            
         return html_data
+    
+    def _generate_semiannual_explanation(self, item_id: int, semiannual_result: Dict, 
+                                         semester_start: pd.Timestamp, monthly_forecasts: List[Dict]) -> Dict:
+        """
+        Gera explicação específica para previsões semestrais
+        
+        Args:
+            item_id: ID do item
+            semiannual_result: Resultado da previsão semestral
+            semester_start: Data de início do semestre
+            monthly_forecasts: Lista das previsões mensais que compõem o semestre
+            
+        Returns:
+            Dicionário com explicações da previsão semestral
+        """
+        if item_id not in self.models or item_id not in self.quality_metrics:
+            return {}
+        
+        metrics = self.quality_metrics[item_id]
+        semester_info = semiannual_result.get('_semester_info', {})
+        semester_name = semester_info.get('semester_name', 'N/A')
+        
+        # Análise das previsões mensais
+        monthly_values = [f['yhat'] for f in monthly_forecasts]
+        monthly_trends = [f['trend'] for f in monthly_forecasts]
+        monthly_seasonals = [f['yearly'] for f in monthly_forecasts]
+        
+        monthly_avg = sum(monthly_values) / len(monthly_values)
+        trend_variation = max(monthly_trends) - min(monthly_trends)
+        seasonal_variation = max(monthly_seasonals) - min(monthly_seasonals)
+        
+        # Gerar resumo HTML comum para todos os níveis (semestral)
+        html_summary = self._generate_html_summary(
+            item_id, semiannual_result, semester_start, 
+            is_semiannual=True, semiannual_info=semiannual_result.get('_semester_info', {}),
+            layout=self.html_layout
+        )
+        
+        if self.explanation_level == "basic":
+            return {
+                "html_summary": html_summary,  # CAMPO COMUM PARA TODOS
+                "summary": f"Previsão de {semiannual_result['yhat']:.0f} unidades para o {semester_name} (soma de 6 meses)",
+                "confidence": metrics['confidence_score'],
+                "monthly_average": f"Média mensal: {monthly_avg:.0f} unidades",
+                "main_insight": self._get_semiannual_main_insight(monthly_values, semester_name)
+            }
+        
+        elif self.explanation_level == "detailed":
+            return {
+                "html_summary": html_summary,  # CAMPO COMUM PARA TODOS
+                "summary": f"Previsão semestral de {semiannual_result['yhat']:.0f} unidades para {semester_name}",
+                "semiannual_breakdown": {
+                    "total_semester": semiannual_result['yhat'],
+                    "monthly_average": round(monthly_avg, 1),
+                    "strongest_month": f"{monthly_forecasts[monthly_values.index(max(monthly_values))]['ds'][:7]}: {max(monthly_values):.0f}",
+                    "weakest_month": f"{monthly_forecasts[monthly_values.index(min(monthly_values))]['ds'][:7]}: {min(monthly_values):.0f}"
+                },
+                "seasonal_analysis": self._analyze_semiannual_seasonality(monthly_forecasts, semester_name),
+                "trend_analysis": f"Variação de tendência no semestre: {trend_variation:.1f} unidades",
+                "confidence_explanation": f"Intervalo semestral: ±{(semiannual_result['yhat_upper'] - semiannual_result['yhat_lower'])/2:.0f} unidades",
+                "data_quality_summary": {
+                    "historical_periods": metrics['data_points'],
+                    "confidence": metrics['confidence_score'],
+                    "accuracy": f"{100-metrics['mape']:.1f}%"
+                }
+            }
+        
+        else:  # advanced
+            return {
+                "html_summary": html_summary,  # CAMPO COMUM PARA TODOS
+                "summary": f"Análise avançada: Previsão semestral de {semiannual_result['yhat']:.0f} unidades para {semester_name}",
+                "semiannual_breakdown": {
+                    "total_semester": semiannual_result['yhat'],
+                    "monthly_values": [round(v, 1) for v in monthly_values],
+                    "monthly_trends": [round(t, 1) for t in monthly_trends],
+                    "monthly_seasonals": [round(s, 1) for s in monthly_seasonals],
+                    "monthly_average": round(monthly_avg, 1),
+                    "monthly_std": round(np.std(monthly_values), 1),
+                    "coefficient_variation": f"{(np.std(monthly_values)/monthly_avg)*100:.1f}%"
+                },
+                "trend_analysis": {
+                    "semiannual_trend": semiannual_result['trend'],
+                    "trend_variation": round(trend_variation, 2),
+                    "trend_consistency": "Alta" if trend_variation < monthly_avg * 0.1 else "Baixa"
+                },
+                "seasonal_analysis": {
+                    "semiannual_seasonal": semiannual_result['yearly'],
+                    "seasonal_variation": round(seasonal_variation, 2),
+                    "dominant_pattern": self._identify_semiannual_pattern(monthly_seasonals)
+                },
+                "confidence_analysis": {
+                    "semiannual_interval": f"±{(semiannual_result['yhat_upper'] - semiannual_result['yhat_lower'])/2:.0f}",
+                    "relative_uncertainty": f"{((semiannual_result['yhat_upper'] - semiannual_result['yhat_lower'])/semiannual_result['yhat'])*100:.1f}%",
+                    "confidence_source": "Agregação dos intervalos mensais"
+                },
+                "technical_metrics": {
+                    "base_mae": round(metrics['mae'], 2),
+                    "base_mape": f"{metrics['mape']:.1f}%",
+                    "base_r2": round(metrics['r2'], 3),
+                    "aggregation_method": "Soma das previsões mensais",
+                    "seasonal_strength": round(metrics['seasonal_strength'], 3)
+                },
+                "recommendations": [
+                    f"Monitorar especialmente {monthly_forecasts[monthly_values.index(max(monthly_values))]['ds'][:7]} (mês de maior demanda)",
+                    "Considerar fatores semestrais específicos do negócio",
+                    "Validar com dados de semestres anteriores similares"
+                ]
+            }
+    
+    def _get_semiannual_main_insight(self, monthly_values: List[float], semester_name: str) -> str:
+        """Gera insight principal para explicação básica semestral"""
+        if len(monthly_values) < 6:
+            return "Dados insuficientes para análise"
+        
+        variation = (max(monthly_values) - min(monthly_values)) / np.mean(monthly_values)
+        
+        if variation < 0.1:
+            return f"Demanda estável ao longo do {semester_name}"
+        elif variation < 0.3:
+            return f"Pequena variação mensal no {semester_name}"
+        else:
+            peak_month = monthly_values.index(max(monthly_values)) + 1
+            month_names = ["primeiro", "segundo", "terceiro", "quarto", "quinto", "sexto"]
+            return f"Pico de demanda esperado no {month_names[peak_month-1]} mês do {semester_name}"
+    
+    def _analyze_semiannual_seasonality(self, monthly_forecasts: List[Dict], semester_name: str) -> str:
+        """Analisa padrão sazonal dentro do semestre"""
+        seasonal_values = [f['yearly'] for f in monthly_forecasts]
+        
+        if len(seasonal_values) < 6:
+            return "Análise sazonal indisponível"
+        
+        if max(seasonal_values) - min(seasonal_values) < 1:
+            return f"Padrão sazonal uniforme no {semester_name}"
+        
+        peak_index = seasonal_values.index(max(seasonal_values))
+        months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
+                 "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+        
+        # Determinar mês baseado na data
+        first_month_num = pd.to_datetime(monthly_forecasts[0]['ds']).month - 1
+        peak_month = months[first_month_num + peak_index]
+        
+        return f"Sazonalidade mais forte em {peak_month} dentro do {semester_name}"
+    
+    def _identify_semiannual_pattern(self, seasonal_values: List[float]) -> str:
+        """Identifica padrão dominante no semestre"""
+        if len(seasonal_values) < 6:
+            return "Padrão indeterminado"
+        
+        # Verificar se é crescente, decrescente ou variável
+        if seasonal_values[0] < seasonal_values[1] < seasonal_values[2] < seasonal_values[3] < seasonal_values[4] < seasonal_values[5]:
+            return "Crescente ao longo do semestre"
+        elif seasonal_values[0] > seasonal_values[1] > seasonal_values[2] > seasonal_values[3] > seasonal_values[4] > seasonal_values[5]:
+            return "Decrescente ao longo do semestre"
+        elif seasonal_values[1] > seasonal_values[0] and seasonal_values[1] > seasonal_values[2] and seasonal_values[1] > seasonal_values[3] and seasonal_values[1] > seasonal_values[4] and seasonal_values[1] > seasonal_values[5]:
+            return "Pico no meio do semestre"
+        else:
+            return "Padrão variável"

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="pt-BR" ng-app="mrpApp">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js"></script>
+    <title>Métricas Avançadas - MRP</title>
+    <style>
+
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .header h1 {
+            font-size: 15px;
+            font-weight: 600;
+            color: #495057;
+            display: flex;
+            align-items: center;
+            margin: 0;
+            padding: 16px 0 14px 14px;
+        }
+
+        .header-icon {
+            margin-right: 8px;
+            color: #007bff;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: #6c757d;
+            cursor: pointer;
+            padding: 0;
+            margin-right: 16px;
+        }
+
+        .info-section {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e9ecef;
+            margin-bottom: 16px;
+        }
+
+        .info-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .info-header-icon {
+            margin-right: 8px;
+            color: #6c757d;
+        }
+
+        .info-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .info-grid:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-grid-5 {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+        }
+
+        .info-item {
+            padding: 12px;
+            border-left: 3px solid;
+            background: #f8f9fa;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .info-item.disponivel { border-left-color: #198754; }
+        .info-item.ok { border-left-color: #198754; }
+        .info-item.programado { border-left-color: #fd7e14; }
+        .info-item.comprar { border-left-color: #0dcaf0; }
+        .info-item.pedido { border-left-color: #6f42c1; }
+        .info-item.entrega { border-left-color: #ffc107; }
+        .info-item.consumo { border-left-color: #dc3545; }
+        .info-item.lead { border-left-color: #20c997; }
+        .info-item.warning { border-left-color: #fd7e14; }
+        .info-item.info { border-left-color: #0dcaf0; }
+        .info-item.success { border-left-color: #198754; }
+        .info-item.critical { border-left-color: #dc3545; }
+
+        .info-value {
+            font-size: 15px !important;
+            font-weight: 700;
+            color: #212529;
+            margin-bottom: 2px;
+        }
+
+        .info-label {
+            font-size: 11px;
+            color: #6c757d;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .info-desc {
+            font-size: 11px;
+            color: #6c757d;
+        }
+
+        .chart-section {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e9ecef;
+            margin-bottom: 16px;
+        }
+
+        .chart-container {
+            height: 220px;
+            position: relative;
+        }
+
+        .critical-points {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #e9ecef;
+        }
+
+        .critical-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            margin: 4px 0;
+            background: #fff8e1;
+            border-left: 3px solid #ffc107;
+            border-radius: 0 4px 4px 0;
+            font-size: 12px;
+        }
+
+        .critical-item.critical {
+            background: #ffebee;
+            border-left-color: #f44336;
+        }
+
+        .critical-date {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .critical-value {
+            font-weight: 500;
+            color: #212529;
+        }
+
+        .critical-coverage {
+            color: #6c757d;
+        }
+
+        .metric-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .status-inadequado {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-ok {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+
+        .status-warning {
+            background: #fff3cd;
+            color: #664d03;
+        }
+    </style>
+</head>
+<body>
+<div>
+    <div class="header">
+        <h1>
+            <span class="header-icon">📊</span>
+            Métricas Avançadas - {{productName}}
+        </h1>
+        <button ng-click="close()" class="close-btn">&times;</button>
+    </div>
+
+    <div style="padding: 16px">
+        <!-- Gráfico de Evolução (Melhorado) -->
+        <div class="chart-section">
+            <div class="info-header">
+                <span class="info-header-icon">📈</span>
+                <span class="info-title">Evolução do Estoque (Jul-Dez 2025)</span>
+            </div>
+            <div class="chart-container">
+                <canvas id="stockChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Análise de Risco e Cobertura -->
+        <div class="info-section">
+            <div class="info-header">
+                <span class="info-header-icon">⚠️</span>
+                <span class="info-title">Análise de Risco e Cobertura</span>
+            </div>
+            <div class="info-grid-5">
+                <div class="info-item critical">
+                    <div class="info-label">Risco de Ruptura</div>
+                    <div class="info-value">{{getRiskLevel()}}</div>
+                    <div class="info-desc">{{getRiskProbability() | number:0}}% probabilidade</div>
+                </div>
+                <div class="info-item info">
+                    <div class="info-label">Cobertura Atual</div>
+                    <div class="info-value">{{getCurrentCoverage() | number:0}} dias</div>
+                    <div class="info-desc">Status: <span class="metric-status" ng-class="getCoverageStatusClass()">{{getCoverageStatus()}}</span></div>
+                </div>
+                <div class="info-item consumo">
+                    <div class="info-label">Ponto Crítico</div>
+                    <div class="info-value">{{getStockoutDays() | number:1}} dias</div>
+                    <div class="info-desc">Menor cobertura prevista</div>
+                </div>
+                <div class="info-item success">
+                    <div class="info-label">Margem Segurança</div>
+                    <div class="info-value">{{getSafetyMargin() | number:0}}</div>
+                    <div class="info-desc">Unidades acima do mínimo</div>
+                </div>
+                <div class="info-item programado">
+                    <div class="info-label">Cobertura Final</div>
+                    <div class="info-value">{{getProjectedCoverage() | number:0}} dias</div>
+                    <div class="info-desc">Projeção dezembro</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Informações Completas do Planejamento MRP -->
+        <div class="info-section">
+            <div class="info-header">
+                <span class="info-header-icon">📋</span>
+                <span class="info-title">Planejamento e Produção</span>
+            </div>
+
+            <!-- Primeira linha: Estoques -->
+            <div class="info-grid">
+                <div class="info-item disponivel">
+                    <div class="info-label">Estoque Inicial</div>
+                    <div class="info-value">{{data.summary.initial_stock | number:0}}</div>
+                    <div class="info-desc">01/Jul - Disponível</div>
+                </div>
+                <div class="info-item ok">
+                    <div class="info-label">Estoque Final</div>
+                    <div class="info-value">{{data.summary.final_stock | number:0}}</div>
+                    <div class="info-desc">31/Dez - Projetado</div>
+                </div>
+                <div class="info-item programado">
+                    <div class="info-label">Estoque Mínimo</div>
+                    <div class="info-value">{{data.summary.minimum_stock | number:0}}</div>
+                    <div class="info-desc">Nível de segurança</div>
+                </div>
+                <div class="info-item consumo">
+                    <div class="info-label">Demanda Total</div>
+                    <div class="info-value">{{getTotalDemand() | number:0}}</div>
+                    <div class="info-desc">Jul-Dez (184 dias)</div>
+                </div>
+            </div>
+
+            <!-- Segunda linha: Produção e Eficiência -->
+            <div class="info-grid">
+                <div class="info-item comprar">
+                    <div class="info-label">Total Produzido</div>
+                    <div class="info-value">{{data.summary.total_produced | number:0}}</div>
+                    <div class="info-desc">{{data.summary.total_batches}} lotes programados</div>
+                </div>
+                <div class="info-item success">
+                    <div class="info-label">Lote Médio</div>
+                    <div class="info-value">{{getAverageBatchSize() | number:0}}</div>
+                    <div class="info-desc">Tamanho médio por lote</div>
+                </div>
+                <div class="info-item info">
+                    <div class="info-label">Utilização Linha</div>
+                    <div class="info-value">{{getProductionUtilization() | number:1}}%</div>
+                    <div class="info-desc">Eficiência produtiva</div>
+                </div>
+                <div class="info-item ok">
+                    <div class="info-label">Taxa Cobertura</div>
+                    <div class="info-value">{{getProductionCoverageRate() | number:1}}%</div>
+                    <div class="info-desc">Atendimento demanda</div>
+                </div>
+            </div>
+
+            <!-- Terceira linha: Datas e Prazos -->
+            <div class="info-grid">
+                <div class="info-item pedido">
+                    <div class="info-label">Próximo Pedido</div>
+                    <div class="info-value">{{getOrderDate() | date:'dd/MM/yyyy'}}</div>
+                    <div class="info-desc">Data recomendada</div>
+                </div>
+                <div class="info-item entrega">
+                    <div class="info-label">Próxima Entrega</div>
+                    <div class="info-value">{{getDeliveryDate()}}</div>
+                    <div class="info-desc">Primeira reposição</div>
+                </div>
+                <div style="margin: 0" class="info-item lead">
+                    <div class="info-label">Lead Time</div>
+                    <div class="info-value">{{getLeadTime() | number:0}} dias</div>
+                    <div class="info-desc">Tempo médio entrega</div>
+                </div>
+                <div class="info-item warning">
+                    <div class="info-label">Consumo Diário</div>
+                    <div class="info-value">{{data.demand_analysis.average_daily_demand | number:1}}</div>
+                    <div class="info-desc">Média período (un/dia)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pontos Críticos -->
+        <div class="critical-points">
+            <div class="info-header">
+                <span class="info-header-icon">🚨</span>
+                <span class="info-title">Pontos Críticos de Atenção ({{data.critical_points.length | number:0}})</span>
+            </div>
+            <div ng-repeat="point in data.critical_points | limitTo:10"
+                 class="critical-item"
+                 ng-class="point.severity">
+                <span class="critical-date">{{point.date | date:'dd/MM/yyyy'}}</span>
+                <span class="critical-value">{{point.stock | number:0}} un</span>
+                <span class="critical-coverage">{{point.days_of_coverage | number:1}} dias</span>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
