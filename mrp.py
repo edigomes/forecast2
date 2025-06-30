@@ -2018,9 +2018,15 @@ class MRPOptimizer:
                     lead_time_buffer = avg_daily_demand * min(leadtime_days * 0.2, 30)
                     batch_quantity = shortfall + safety_buffer + lead_time_buffer
             else:
-                batch_quantity = self._calculate_optimal_group_batch_quantity(
-                    group, shortfall, valid_demands, actual_arrival_date.strftime('%Y-%m-%d'),
-                    stock_before_arrival, batches, initial_stock, safety_margin_percent
+                batch_quantity = self._calculate_optimal_sporadic_batch_quantity(
+                    shortfall=shortfall,
+                    valid_demands=valid_demands,
+                    target_demand_date=group['primary_demand_date'],
+                    arrival_date=actual_arrival_date.strftime('%Y-%m-%d'),
+                    projected_stock=stock_before_arrival,
+                    existing_batches=batches,
+                    initial_stock=initial_stock,
+                    safety_margin_percent=safety_margin_percent
                 )
             
             # Aplicar limites
