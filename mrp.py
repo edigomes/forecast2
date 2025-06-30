@@ -80,6 +80,11 @@ class OptimizationParams:
     daily_production_capacity: float = float('inf')  # Capacidade diária de produção
     enable_eoq_optimization: bool = True  # Habilitar otimização EOQ
     enable_consolidation: bool = True  # Habilitar consolidação de pedidos
+    # NOVOS PARÂMETROS para melhor controle de consolidação
+    force_consolidation_within_leadtime: bool = True  # Força consolidação dentro do lead time
+    min_consolidation_benefit: float = 50.0  # Benefício mínimo para consolidar (independente de setup_cost)
+    operational_efficiency_weight: float = 1.0  # Peso dos benefícios operacionais (0.5-2.0)
+    overlap_prevention_priority: bool = True  # Priorizar prevenção de overlap de lead time
 
 
 class MRPOptimizer:
@@ -1856,7 +1861,257 @@ class MRPOptimizer:
         absolute_minimum_stock: float,
         max_gap_days: int
     ) -> List[BatchResult]:
-        """Algoritmo otimizado para planejar lotes esporádicos"""
+        """Algoritmo otimizado para planejar lotes esporádicos com agrupamento inteligente"""
+        
+        # Verificar se consolidação está habilitada
+        if hasattr(self.params, 'enable_consolidation') and self.params.enable_consolidation:
+            return self._plan_sporadic_batches_with_intelligent_grouping(
+                valid_demands, initial_stock, leadtime_days, start_period, end_period,
+                start_cutoff, end_cutoff, safety_days, safety_margin_percent, 
+                absolute_minimum_stock, max_gap_days
+            )
+        else:
+            # Usar algoritmo original
+            return self._plan_sporadic_batches_original(
+                valid_demands, initial_stock, leadtime_days, start_period, end_period,
+                start_cutoff, end_cutoff, safety_days, safety_margin_percent, 
+                absolute_minimum_stock, max_gap_days
+            )
+
+    def _plan_sporadic_batches_with_intelligent_grouping(
+        self,
+        valid_demands: Dict[str, float],
+        initial_stock: float,
+        leadtime_days: int,
+        start_period: pd.Timestamp,
+        end_period: pd.Timestamp,
+        start_cutoff: pd.Timestamp,
+        end_cutoff: pd.Timestamp,
+        safety_days: int,
+        safety_margin_percent: float,
+        absolute_minimum_stock: float,
+        max_gap_days: int
+    ) -> List[BatchResult]:
+        """Algoritmo otimizado com prevenção de stockout para lead times longos"""
+        
+        if not valid_demands:
+            return []
+        
+        # Analisar grupos de consolidação
+        demand_groups = self._analyze_demand_groups_for_consolidation(
+            valid_demands, leadtime_days, safety_days, max_gap_days
+        )
+        
+        # NOVA LÓGICA: Detectar cenários críticos de lead time longo
+        long_leadtime_threshold = 45  # Dias
+        is_long_leadtime = leadtime_days >= long_leadtime_threshold
+        
+        # Calcular estoque crítico baseado no lead time
+        total_demand = sum(valid_demands.values())
+        avg_daily_demand = total_demand / len(valid_demands) if valid_demands else 0
+        
+        # Para lead times longos, ser mais conservador
+        if is_long_leadtime:
+            critical_stock_level = max(
+                avg_daily_demand * (leadtime_days + safety_days),  # Cobertura para lead time
+                total_demand * 0.3  # Mínimo 30% da demanda total
+            )
+        else:
+            critical_stock_level = avg_daily_demand * (leadtime_days + safety_days)
+        
+        batches = []
+        current_stock = initial_stock
+        
+        # NOVA LÓGICA: Simulação detalhada de estoque para detectar gaps perigosos
+        stock_simulation = self._simulate_stock_evolution_for_sporadic(
+            valid_demands, initial_stock, demand_groups, leadtime_days, safety_days
+        )
+        
+        # Detectar períodos de risco
+        critical_periods = self._detect_critical_periods(stock_simulation, critical_stock_level)
+        
+        # Se há períodos críticos, ajustar grupos ou criar lotes intermediários
+        if critical_periods and is_long_leadtime:
+            demand_groups = self._adjust_groups_for_critical_periods(
+                demand_groups, critical_periods, valid_demands, leadtime_days, safety_days
+            )
+        
+        # Ordenar grupos por data da primeira demanda
+        demand_groups.sort(key=lambda g: min(pd.to_datetime(date) for date in g['demand_dates']))
+        
+        for group in demand_groups:
+            # Calcular data alvo para o grupo (primeira demanda)
+            primary_date = pd.to_datetime(group['primary_demand_date'])
+            target_arrival_date = primary_date - pd.Timedelta(days=safety_days)
+            
+            # Data do pedido considerando lead time
+            order_date = target_arrival_date - pd.Timedelta(days=leadtime_days)
+            
+            # Verificar se o pedido pode ser feito dentro do período de planejamento
+            if order_date < start_cutoff:
+                # Ajustar para o início do período de planejamento
+                order_date = start_cutoff
+                actual_arrival_date = order_date + pd.Timedelta(days=leadtime_days)
+            else:
+                actual_arrival_date = target_arrival_date
+            
+            # Calcular déficit até a chegada do lote
+            stock_before_arrival = self._calculate_stock_at_date(
+                batches, current_stock, valid_demands, actual_arrival_date
+            )
+            
+            # NOVA LÓGICA: Para lead times longos, ser mais agressivo na quantidade
+            group_demand = group['total_demand']
+            shortfall = max(0, group_demand - stock_before_arrival)
+            
+            if is_long_leadtime:
+                # CORREÇÃO CRÍTICA: Para lead times longos, calcular cobertura mais ampla
+                remaining_demands_after_group = []
+                group_dates_set = set(group['demand_dates'])
+                
+                # Encontrar próxima demanda após este grupo
+                next_demand_date = None
+                for date_str in sorted(valid_demands.keys()):
+                    if date_str not in group_dates_set and pd.to_datetime(date_str) > actual_arrival_date:
+                        next_demand_date = pd.to_datetime(date_str)
+                        break
+                
+                # Se há próxima demanda, calcular gap
+                if next_demand_date:
+                    gap_to_next = (next_demand_date - actual_arrival_date).days
+                    
+                    # Se o gap é maior que o lead time, precisamos de mais estoque
+                    if gap_to_next > leadtime_days:
+                        # Calcular quantas demandas futuras precisamos cobrir
+                        coverage_window = min(gap_to_next + leadtime_days, 120)  # Máximo 120 dias
+                        future_demand_in_coverage = 0
+                        
+                        for date_str, qty in valid_demands.items():
+                            if date_str not in group_dates_set:
+                                demand_date = pd.to_datetime(date_str)
+                                days_from_arrival = (demand_date - actual_arrival_date).days
+                                if 0 < days_from_arrival <= coverage_window:
+                                    # Fator de importância decrescente com distância
+                                    coverage_factor = max(0.2, 1 - (days_from_arrival / coverage_window))
+                                    future_demand_in_coverage += qty * coverage_factor
+                        
+                        # Buffer crítico para lead times longos
+                        critical_buffer = group_demand * 0.5  # 50% extra para segurança
+                        lead_time_safety = avg_daily_demand * min(leadtime_days * 0.3, 45)
+                        
+                        batch_quantity = (shortfall + 
+                                        group_demand * (safety_margin_percent / 100) +
+                                        critical_buffer +
+                                        lead_time_safety +
+                                        future_demand_in_coverage)
+                    else:
+                        # Gap normal, usar lógica padrão melhorada
+                        safety_buffer = group_demand * (safety_margin_percent / 100)
+                        lead_time_buffer = avg_daily_demand * min(leadtime_days * 0.2, 30)
+                        future_demand = self._calculate_future_demand_in_window(
+                            valid_demands, actual_arrival_date, min(leadtime_days + 30, 90), group['demand_dates']
+                        )
+                        batch_quantity = shortfall + safety_buffer + lead_time_buffer + (future_demand * 0.4)
+                else:
+                    # Último grupo ou sem demandas futuras
+                    safety_buffer = group_demand * (safety_margin_percent / 100)
+                    lead_time_buffer = avg_daily_demand * min(leadtime_days * 0.2, 30)
+                    batch_quantity = shortfall + safety_buffer + lead_time_buffer
+            else:
+                batch_quantity = self._calculate_optimal_group_batch_quantity(
+                    group, shortfall, valid_demands, actual_arrival_date.strftime('%Y-%m-%d'),
+                    stock_before_arrival, batches, initial_stock, safety_margin_percent
+                )
+            
+            # Aplicar limites
+            batch_quantity = max(batch_quantity, getattr(self.params, 'min_batch_size', 200))
+            batch_quantity = min(batch_quantity, getattr(self.params, 'max_batch_size', 15000))
+            
+            # Criar analytics do lote
+            batch_analytics = self._create_sporadic_batch_analytics(
+                demand_date_str=group['primary_demand_date'],
+                demand_quantity=group_demand,
+                shortfall=shortfall,
+                batch_quantity=batch_quantity,
+                stock_before_arrival=stock_before_arrival,
+                actual_arrival_date=actual_arrival_date,
+                target_arrival_date=target_arrival_date,
+                leadtime_days=leadtime_days,
+                safety_days=safety_days
+            )
+            
+            # Adicionar informações específicas de consolidação
+            if len(group['demand_dates']) > 1:
+                batch_analytics['consolidated_group'] = True
+                batch_analytics['group_size'] = len(group['demand_dates'])
+                batch_analytics['demands_covered'] = [
+                    {'date': date, 'quantity': valid_demands.get(date, 0)} 
+                    for date in group['demand_dates']
+                ]
+                batch_analytics['consolidation_savings'] = group.get('consolidation_savings', 0)
+                batch_analytics['holding_cost_increase'] = group.get('holding_cost_increase', 0)
+                batch_analytics['operational_benefits'] = group.get('operational_benefits', 0)
+                batch_analytics['lead_time_efficiency'] = group.get('lead_time_efficiency', 0)
+                batch_analytics['overlap_prevention'] = group.get('lead_time_efficiency', 0) > 0
+                batch_analytics['consolidation_quality'] = 'high' if group.get('operational_benefits', 0) > 0 else 'medium'
+                batch_analytics['net_savings'] = (
+                    group.get('consolidation_savings', 0) + 
+                    group.get('operational_benefits', 0) - 
+                    group.get('holding_cost_increase', 0)
+                )
+            else:
+                batch_analytics['consolidated_group'] = False
+            
+            # NOVA INFORMAÇÃO: Marcar se é lote para lead time longo
+            if is_long_leadtime:
+                batch_analytics['long_leadtime_optimization'] = True
+                batch_analytics['critical_stock_level'] = critical_stock_level
+                batch_analytics['future_demand_considered'] = future_demand if 'future_demand' in locals() else 0
+            
+            # Criar resultado do lote
+            batch = BatchResult(
+                order_date=order_date.strftime('%Y-%m-%d'),
+                arrival_date=actual_arrival_date.strftime('%Y-%m-%d'),
+                quantity=round(batch_quantity, 3),
+                analytics=batch_analytics
+            )
+            
+            batches.append(batch)
+            
+            # Atualizar estoque simulado
+            current_stock = stock_before_arrival + batch_quantity
+        
+        # NOVA VALIDAÇÃO: Verificar se ainda há riscos de stockout
+        final_validation = self._validate_no_stockout_risk(
+            batches, initial_stock, valid_demands, leadtime_days
+        )
+        
+        if not final_validation['is_safe'] and is_long_leadtime:
+            # Criar lote de emergência se necessário
+            emergency_batch = self._create_emergency_batch_if_needed(
+                final_validation, batches, valid_demands, leadtime_days, start_cutoff, safety_days
+            )
+            if emergency_batch:
+                batches.append(emergency_batch)
+                batches.sort(key=lambda b: pd.to_datetime(b.arrival_date))
+        
+        return batches
+
+    def _plan_sporadic_batches_original(
+        self,
+        valid_demands: Dict[str, float],
+        initial_stock: float,
+        leadtime_days: int,
+        start_period: pd.Timestamp,
+        end_period: pd.Timestamp,
+        start_cutoff: pd.Timestamp,
+        end_cutoff: pd.Timestamp,
+        safety_days: int,
+        safety_margin_percent: float,
+        absolute_minimum_stock: float,
+        max_gap_days: int
+    ) -> List[BatchResult]:
+        """Algoritmo original para planejar lotes esporádicos (mantido para compatibilidade)"""
         batches = []
         production_line_available = start_cutoff
         
@@ -2408,7 +2663,7 @@ class MRPOptimizer:
             next_order = pd.to_datetime(batches[i + 1].order_date)
             gap_days = (next_order - current_arrival).days
             
-            gap_type = 'continuous' if gap_days <= 1 else ('idle' if gap_days > 7 else 'normal')
+            gap_type = 'continuous' if gap_days == 0 else ('idle' if gap_days > 7 else 'normal')
             production_gaps.append({
                 'from_batch': i + 1,
                 'to_batch': i + 2,
@@ -2570,6 +2825,477 @@ class MRPOptimizer:
                 })
         
         return result
+
+    def _calculate_stock_at_date(
+        self,
+        batches: List[BatchResult],
+        current_stock: float,
+        valid_demands: Dict[str, float],
+        target_date: pd.Timestamp
+    ) -> float:
+        """Calcula o estoque em uma data específica considerando os lotes planejados"""
+        stock_before_arrival = current_stock
+        target_date_str = target_date.strftime('%Y-%m-%d')
+        for batch in batches:
+            if batch.arrival_date <= target_date_str:
+                stock_before_arrival += batch.quantity
+        return stock_before_arrival
+
+    def _calculate_future_demand_in_window(
+        self,
+        valid_demands: Dict[str, float],
+        from_date: pd.Timestamp,
+        window_days: int,
+        exclude_dates: List[str]
+    ) -> float:
+        """Calcula demanda futura numa janela de tempo, excluindo datas já consideradas"""
+        
+        window_end = from_date + pd.Timedelta(days=window_days)
+        future_demand = 0
+        
+        for date_str, quantity in valid_demands.items():
+            if date_str in exclude_dates:
+                continue
+                
+            demand_date = pd.to_datetime(date_str)
+            if from_date < demand_date <= window_end:
+                future_demand += quantity
+        
+        return future_demand
+
+    def _validate_no_stockout_risk(
+        self,
+        batches: List[BatchResult],
+        initial_stock: float,
+        valid_demands: Dict[str, float],
+        leadtime_days: int
+    ) -> Dict:
+        """Valida se há risco de stockout com os lotes planejados"""
+        
+        # Simular estoque com os lotes planejados
+        stock_evolution = {}
+        current_stock = initial_stock
+        
+        # Ordenar todas as datas
+        all_dates = set()
+        for date_str in valid_demands.keys():
+            all_dates.add(date_str)
+        for batch in batches:
+            all_dates.add(batch.arrival_date)
+        
+        # Adicionar datas intermediárias para verificação completa
+        if all_dates:
+            start_date = min(pd.to_datetime(d) for d in all_dates)
+            end_date = max(pd.to_datetime(d) for d in all_dates)
+            
+            current_date = start_date
+            while current_date <= end_date:
+                all_dates.add(current_date.strftime('%Y-%m-%d'))
+                current_date += pd.Timedelta(days=1)
+        
+        # Criar dicionários para lookup rápido
+        batch_arrivals = {batch.arrival_date: batch.quantity for batch in batches}
+        
+        min_stock = initial_stock
+        min_stock_date = None
+        stockout_detected = False
+        
+        for date_str in sorted(all_dates):
+            # Adicionar chegadas de lotes
+            if date_str in batch_arrivals:
+                current_stock += batch_arrivals[date_str]
+            
+            # Subtrair demandas
+            if date_str in valid_demands:
+                current_stock -= valid_demands[date_str]
+            
+            stock_evolution[date_str] = current_stock
+            
+            # Acompanhar estoque mínimo
+            if current_stock < min_stock:
+                min_stock = current_stock
+                min_stock_date = date_str
+                
+                if current_stock < 0:
+                    stockout_detected = True
+        
+        return {
+            'is_safe': not stockout_detected,
+            'min_stock': min_stock,
+            'min_stock_date': min_stock_date,
+            'stock_evolution': stock_evolution,
+            'stockout_detected': stockout_detected
+        }
+
+    def _create_emergency_batch_if_needed(
+        self,
+        validation_result: Dict,
+        existing_batches: List[BatchResult],
+        valid_demands: Dict[str, float],
+        leadtime_days: int,
+        start_cutoff: pd.Timestamp,
+        safety_days: int
+    ) -> Optional[BatchResult]:
+        """Cria um lote de emergência se houver risco de stockout"""
+        
+        if validation_result['is_safe']:
+            return None
+        
+        min_stock_date = pd.to_datetime(validation_result['min_stock_date'])
+        min_stock = validation_result['min_stock']
+        
+        # Calcular quando o lote de emergência deve chegar
+        emergency_arrival = min_stock_date - pd.Timedelta(days=safety_days)
+        emergency_order = emergency_arrival - pd.Timedelta(days=leadtime_days)
+        
+        # Verificar se é viável fazer o pedido
+        if emergency_order < start_cutoff:
+            emergency_order = start_cutoff
+            emergency_arrival = emergency_order + pd.Timedelta(days=leadtime_days)
+        
+        # Calcular quantidade necessária
+        deficit = abs(min_stock) if min_stock < 0 else 0
+        
+        # Adicionar buffer para demandas próximas
+        future_demand = 0
+        for date_str, qty in valid_demands.items():
+            demand_date = pd.to_datetime(date_str)
+            if emergency_arrival < demand_date <= emergency_arrival + pd.Timedelta(days=30):
+                future_demand += qty
+        
+        emergency_quantity = deficit + future_demand * 0.5
+        emergency_quantity = max(emergency_quantity, getattr(self.params, 'min_batch_size', 200))
+        emergency_quantity = min(emergency_quantity, getattr(self.params, 'max_batch_size', 15000))
+        
+        # Analytics para lote de emergência
+        emergency_analytics = {
+            'emergency_batch': True,
+            'reason': 'stockout_prevention',
+            'original_min_stock': min_stock,
+            'target_coverage': 30,
+            'is_critical': True,
+            'urgency_level': 'emergency',
+            'actual_lead_time': leadtime_days,
+            'efficiency_ratio': 1.0,
+            'consolidated_group': False
+        }
+        
+        emergency_batch = BatchResult(
+            order_date=emergency_order.strftime('%Y-%m-%d'),
+            arrival_date=emergency_arrival.strftime('%Y-%m-%d'),
+            quantity=round(emergency_quantity, 3),
+            analytics=emergency_analytics
+        )
+        
+        return emergency_batch
+
+    def _analyze_demand_groups_for_consolidation(
+        self,
+        valid_demands: Dict[str, float],
+        leadtime_days: int,
+        safety_days: int,
+        max_gap_days: int
+    ) -> List[Dict]:
+        """Analisa demandas para identificar grupos otimizados de consolidação com análise de lead time overlap"""
+        
+        # Converter para lista ordenada por data
+        demand_list = []
+        for date_str, quantity in sorted(valid_demands.items()):
+            demand_list.append({
+                'date': date_str,
+                'date_obj': pd.to_datetime(date_str),
+                'quantity': quantity,
+                'processed': False
+            })
+        
+        groups = []
+        
+        # Parâmetros de agrupamento mais flexíveis
+        max_consolidation_window = min(max_gap_days, 60)  # Janela maior para consolidação
+        min_economic_batch_size = getattr(self.params, 'min_batch_size', 200)
+        setup_cost = getattr(self.params, 'setup_cost', 250)
+        holding_cost_rate = getattr(self.params, 'holding_cost_rate', 0.002)  # Por dia
+        
+        # Fatores adicionais para consolidação mais inteligente
+        lead_time_buffer = leadtime_days + safety_days  # Buffer total de tempo
+        
+        i = 0
+        while i < len(demand_list):
+            if demand_list[i]['processed']:
+                i += 1
+                continue
+                
+            # Iniciar novo grupo com a demanda atual
+            current_group = {
+                'primary_demand_date': demand_list[i]['date'],
+                'demand_dates': [demand_list[i]['date']],
+                'total_demand': demand_list[i]['quantity'],
+                'consolidation_savings': 0,
+                'holding_cost_increase': 0,
+                'lead_time_efficiency': 0,
+                'operational_benefits': 0
+            }
+            
+            demand_list[i]['processed'] = True
+            current_primary_date = demand_list[i]['date_obj']
+            
+            # Procurar demandas próximas para consolidar
+            j = i + 1
+            while j < len(demand_list):
+                if demand_list[j]['processed']:
+                    j += 1
+                    continue
+                
+                # Calcular gap em dias
+                gap_days = (demand_list[j]['date_obj'] - demand_list[i]['date_obj']).days
+                
+                if gap_days > max_consolidation_window:
+                    break  # Demandas muito distantes
+                
+                # NOVA LÓGICA: Análise de overlap de lead time
+                # Se a demanda j está dentro do lead time de um lote que atenderia demanda i,
+                # então é muito provável que seja eficiente consolidar
+                within_lead_time_window = gap_days <= lead_time_buffer
+                
+                # Calcular viabilidade econômica da consolidação
+                consolidation_savings = setup_cost  # Economia de um setup
+                
+                # Custo adicional de carregamento (mais refinado)
+                additional_holding_days = gap_days
+                holding_cost_increase = demand_list[j]['quantity'] * holding_cost_rate * additional_holding_days
+                
+                # NOVA LÓGICA: Benefícios operacionais adicionais
+                operational_benefits = 0
+                
+                # Benefício 1: Evitar overlap de lead time (muito importante!)
+                if within_lead_time_window:
+                    overlap_benefit = setup_cost * 0.5  # 50% de benefício adicional por evitar overlap
+                    if getattr(self.params, 'overlap_prevention_priority', True):
+                        overlap_benefit += getattr(self.params, 'min_consolidation_benefit', 50.0)
+                    operational_benefits += overlap_benefit
+                
+                # Benefício 2: Simplificação operacional
+                if gap_days <= 14:  # Demandas muito próximas
+                    operational_benefits += setup_cost * 0.2  # 20% de benefício por simplicidade
+                
+                # Benefício 3: Utilização de capacidade
+                combined_quantity = current_group['total_demand'] + demand_list[j]['quantity']
+                if combined_quantity >= min_economic_batch_size * 1.5:  # Lote de tamanho econômico
+                    operational_benefits += setup_cost * 0.1  # 10% de benefício por escala
+                
+                # Aplicar peso dos benefícios operacionais
+                operational_efficiency_weight = getattr(self.params, 'operational_efficiency_weight', 1.0)
+                operational_benefits *= operational_efficiency_weight
+                
+                # Critério de consolidação mais inteligente
+                total_benefits = consolidation_savings + operational_benefits
+                net_benefit = total_benefits - holding_cost_increase
+                
+                # Benefício mínimo configurável (importante para setup_cost baixo)
+                min_benefit_threshold = getattr(self.params, 'min_consolidation_benefit', 50.0)
+                
+                # NOVA LÓGICA: Critérios múltiplos para consolidação
+                should_consolidate = False
+                
+                # Critério 1: Benefício econômico líquido positivo
+                if net_benefit > 0:
+                    should_consolidate = True
+                
+                # Critério 2: Benefício mínimo absoluto (independente de setup_cost)
+                elif total_benefits >= min_benefit_threshold:
+                    should_consolidate = True
+                
+                # Critério 3: Demandas dentro do lead time (evitar overlap) - FORÇADO se habilitado
+                elif (within_lead_time_window and 
+                      getattr(self.params, 'force_consolidation_within_leadtime', True) and
+                      holding_cost_increase < setup_cost * 1.5):
+                    should_consolidate = True
+                
+                # Critério 4: Demandas muito próximas (< 7 dias) mesmo com custo alto
+                elif gap_days <= 7 and holding_cost_increase < setup_cost * 1.2:
+                    should_consolidate = True
+                
+                # Critério 5: Lotes pequenos próximos (eficiência operacional)
+                elif (gap_days <= 14 and 
+                      current_group['total_demand'] < min_economic_batch_size * 2 and
+                      demand_list[j]['quantity'] < min_economic_batch_size * 2 and
+                      holding_cost_increase < min_benefit_threshold * 2):
+                    should_consolidate = True
+                
+                # Critério 6: Setup cost muito baixo - consolidar mais agressivamente
+                elif setup_cost < 100 and gap_days <= 21 and holding_cost_increase < 200:
+                    should_consolidate = True
+                
+                if should_consolidate:
+                    current_group['demand_dates'].append(demand_list[j]['date'])
+                    current_group['total_demand'] += demand_list[j]['quantity']
+                    current_group['consolidation_savings'] += consolidation_savings
+                    current_group['holding_cost_increase'] += holding_cost_increase
+                    current_group['operational_benefits'] += operational_benefits
+                    
+                    # Calcular eficiência de lead time
+                    if within_lead_time_window:
+                        current_group['lead_time_efficiency'] += 1
+                    
+                    demand_list[j]['processed'] = True
+                
+                j += 1
+            
+            groups.append(current_group)
+            i += 1
+        
+        return groups
+
+    def _detect_critical_periods(
+        self, 
+        stock_simulation: Dict[str, float], 
+        critical_level: float
+    ) -> List[Dict]:
+        """Detecta períodos onde o estoque fica abaixo do nível crítico"""
+        
+        critical_periods = []
+        in_critical_period = False
+        period_start = None
+        
+        for date_str, stock in stock_simulation.items():
+            if stock < critical_level and not in_critical_period:
+                # Início de período crítico
+                in_critical_period = True
+                period_start = date_str
+            elif stock >= critical_level and in_critical_period:
+                # Fim de período crítico
+                in_critical_period = False
+                critical_periods.append({
+                    'start_date': period_start,
+                    'end_date': date_str,
+                    'min_stock': min(stock_simulation[d] for d in stock_simulation.keys() 
+                                   if period_start <= d <= date_str),
+                    'duration_days': (pd.to_datetime(date_str) - pd.to_datetime(period_start)).days
+                })
+        
+        # Se terminou em período crítico
+        if in_critical_period and period_start:
+            last_date = max(stock_simulation.keys())
+            critical_periods.append({
+                'start_date': period_start,
+                'end_date': last_date,
+                'min_stock': min(stock_simulation[d] for d in stock_simulation.keys() 
+                               if period_start <= d <= last_date),
+                'duration_days': (pd.to_datetime(last_date) - pd.to_datetime(period_start)).days
+            })
+        
+        return critical_periods
+
+    def _adjust_groups_for_critical_periods(
+        self,
+        demand_groups: List[Dict],
+        critical_periods: List[Dict],
+        valid_demands: Dict[str, float],
+        leadtime_days: int,
+        safety_days: int
+    ) -> List[Dict]:
+        """Ajusta grupos de demanda para evitar períodos críticos"""
+        
+        adjusted_groups = demand_groups.copy()
+        
+        for period in critical_periods:
+            if period['duration_days'] > 14:  # Período crítico longo
+                # Identificar se há demandas no período crítico que podem ser atendidas antecipadamente
+                period_start = pd.to_datetime(period['start_date'])
+                period_end = pd.to_datetime(period['end_date'])
+                
+                # Procurar demandas próximas ao período crítico
+                for demand_date_str, demand_qty in valid_demands.items():
+                    demand_date = pd.to_datetime(demand_date_str)
+                    
+                    if period_start <= demand_date <= period_end + pd.Timedelta(days=leadtime_days):
+                        # Esta demanda pode precisar de um lote antecipado
+                        # Criar um grupo separado se não estiver em um grupo grande
+                        
+                        current_group = None
+                        for group in adjusted_groups:
+                            if demand_date_str in group['demand_dates']:
+                                current_group = group
+                                break
+                        
+                        if current_group and len(current_group['demand_dates']) > 2:
+                            # Separar esta demanda em um grupo próprio
+                            adjusted_groups.remove(current_group)
+                            
+                            # Grupo original sem esta demanda
+                            remaining_dates = [d for d in current_group['demand_dates'] if d != demand_date_str]
+                            if remaining_dates:
+                                remaining_group = {
+                                    'primary_demand_date': min(remaining_dates),
+                                    'demand_dates': remaining_dates,
+                                    'total_demand': sum(valid_demands[d] for d in remaining_dates),
+                                    'consolidation_savings': current_group['consolidation_savings'] * 0.7,
+                                    'holding_cost_increase': current_group['holding_cost_increase'] * 0.7,
+                                    'lead_time_efficiency': current_group.get('lead_time_efficiency', 0),
+                                    'operational_benefits': current_group.get('operational_benefits', 0) * 0.7
+                                }
+                                adjusted_groups.append(remaining_group)
+                            
+                            # Novo grupo para demanda crítica
+                            critical_group = {
+                                'primary_demand_date': demand_date_str,
+                                'demand_dates': [demand_date_str],
+                                'total_demand': demand_qty,
+                                'consolidation_savings': 0,
+                                'holding_cost_increase': 0,
+                                'lead_time_efficiency': 0,
+                                'operational_benefits': 100,  # Benefício por evitar stockout
+                                'critical_timing': True  # Marcar como crítico
+                            }
+                            adjusted_groups.append(critical_group)
+        
+        return adjusted_groups
+
+    def _simulate_stock_evolution_for_sporadic(
+        self,
+        valid_demands: Dict[str, float],
+        initial_stock: float,
+        demand_groups: List[Dict],
+        leadtime_days: int,
+        safety_days: int
+    ) -> Dict[str, float]:
+        """Simula evolução do estoque para detectar gaps perigosos em demandas esporádicas"""
+        
+        # Criar cronograma de chegadas baseado nos grupos
+        arrivals = []
+        for group in demand_groups:
+            primary_date = pd.to_datetime(group['primary_demand_date'])
+            target_arrival = primary_date - pd.Timedelta(days=safety_days)
+            arrivals.append({
+                'date': target_arrival,
+                'quantity': group['total_demand'] * 1.2  # Estimativa conservadora
+            })
+        
+        # Simular estoque dia a dia
+        start_date = min(pd.to_datetime(date) for date in valid_demands.keys()) - pd.Timedelta(days=leadtime_days)
+        end_date = max(pd.to_datetime(date) for date in valid_demands.keys()) + pd.Timedelta(days=30)
+        
+        stock_evolution = {}
+        current_stock = initial_stock
+        current_date = start_date
+        
+        arrivals_dict = {arr['date'].strftime('%Y-%m-%d'): arr['quantity'] for arr in arrivals}
+        
+        while current_date <= end_date:
+            date_str = current_date.strftime('%Y-%m-%d')
+            
+            # Adicionar chegadas
+            if date_str in arrivals_dict:
+                current_stock += arrivals_dict[date_str]
+            
+            # Subtrair demandas
+            if date_str in valid_demands:
+                current_stock -= valid_demands[date_str]
+            
+            stock_evolution[date_str] = current_stock
+            current_date += pd.Timedelta(days=1)
+        
+        return stock_evolution
 
 
 # Exemplo de uso e funções auxiliares
