@@ -1,0 +1,22 @@
+{
+  "sporadic_demand": {
+    "2024-01-15": 500.0,
+    "2024-01-22": 300.0,
+    "2024-02-05": 800.0,
+    "2024-02-18": 400.0,
+    "2024-03-10": 600.0
+  },
+  "initial_stock": 200.0,
+  "leadtime_days": 7,
+  "period_start_date": "2024-01-01",
+  "period_end_date": "2024-03-31",
+  "start_cutoff_date": "2024-01-01",
+  "end_cutoff_date": "2024-04-15",
+  "safety_margin_percent": 10.0,
+  "safety_days": 2,
+  "minimum_stock_percent": 5.0,
+  "max_gap_days": 30,
+  "setup_cost": 300.0,
+  "service_level": 0.95,
+  "enable_consolidation": true
+} 

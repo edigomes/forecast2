@@ -849,6 +849,270 @@ def mrp_optimize():
         logger.error(traceback.format_exc())
         return jsonify({"error": f"Falha na otimização MRP: {str(ex)}"}), 500
 
+@app.route('/mrp_sporadic', methods=['POST'])
+def mrp_sporadic():
+    """
+    Endpoint para planejamento de lotes para demandas esporádicas
+    
+    Parâmetros obrigatórios:
+    - sporadic_demand: Dict com demandas esporádicas {"YYYY-MM-DD": quantidade}
+    - initial_stock: Estoque inicial (float)
+    - leadtime_days: Lead time em dias (int)
+    - period_start_date: Data início do período (YYYY-MM-DD)
+    - period_end_date: Data fim do período (YYYY-MM-DD)
+    - start_cutoff_date: Data de corte inicial (YYYY-MM-DD)
+    - end_cutoff_date: Data de corte final (YYYY-MM-DD)
+    
+    Parâmetros opcionais:
+    - safety_margin_percent: Margem de segurança % (padrão: 8.0)
+    - safety_days: Dias de segurança (padrão: 2)
+    - minimum_stock_percent: Estoque mínimo % da maior demanda (padrão: 0.0)
+    - max_gap_days: Gap máximo entre lotes (padrão: 999)
+    
+    Parâmetros avançados de otimização (mesmos do MRP):
+    - setup_cost: Custo fixo por pedido (padrão: 250.0)
+    - holding_cost_rate: Taxa de custo de manutenção (padrão: 0.20)
+    - service_level: Nível de serviço desejado (padrão: 0.95)
+    - min_batch_size: Tamanho mínimo do lote (padrão: 200.0)
+    - max_batch_size: Tamanho máximo do lote (padrão: 10000.0)
+    - enable_consolidation: Habilitar consolidação de pedidos (padrão: True)
+    - enable_eoq_optimization: Habilitar otimização EOQ (padrão: True)
+    """
+    try:
+        data = request.get_json(force=True) or {}
+        
+        logger.info("="*80)
+        logger.info("ENDPOINT MRP SPORADIC DEMAND")
+        logger.info("="*80)
+        
+        # Log dos dados de entrada
+        logger.info("DADOS DE ENTRADA:")
+        logger.info(f"sporadic_demand: {data.get('sporadic_demand', 'não informado')}")
+        logger.info(f"initial_stock: {data.get('initial_stock', 'não informado')}")
+        logger.info(f"leadtime_days: {data.get('leadtime_days', 'não informado')}")
+        logger.info(f"period_start_date: {data.get('period_start_date', 'não informado')}")
+        logger.info(f"period_end_date: {data.get('period_end_date', 'não informado')}")
+        logger.info(f"start_cutoff_date: {data.get('start_cutoff_date', 'não informado')}")
+        logger.info(f"end_cutoff_date: {data.get('end_cutoff_date', 'não informado')}")
+        
+        # Validações dos parâmetros obrigatórios
+        required_fields = [
+            'sporadic_demand', 'initial_stock', 'leadtime_days',
+            'period_start_date', 'period_end_date', 
+            'start_cutoff_date', 'end_cutoff_date'
+        ]
+        
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Campo obrigatório '{field}' não fornecido"}), 400
+        
+        # Validar tipos de dados
+        try:
+            initial_stock = float(data['initial_stock'])
+            leadtime_days = int(data['leadtime_days'])
+        except (ValueError, TypeError):
+            return jsonify({"error": "initial_stock deve ser número e leadtime_days deve ser inteiro"}), 400
+        
+        if initial_stock < 0:
+            return jsonify({"error": "initial_stock não pode ser negativo"}), 400
+            
+        if leadtime_days < 0:
+            return jsonify({"error": "leadtime_days não pode ser negativo"}), 400
+        
+        # Validar sporadic_demand
+        sporadic_demand = data['sporadic_demand']
+        if not isinstance(sporadic_demand, dict) or not sporadic_demand:
+            return jsonify({"error": "sporadic_demand deve ser dicionário não vazio"}), 400
+        
+        # Validar formato das demandas esporádicas
+        for date_key, demand_value in sporadic_demand.items():
+            try:
+                # Verificar formato da data (YYYY-MM-DD)
+                pd.to_datetime(date_key)
+                # Verificar se demanda é numérica e positiva
+                demand_val = float(demand_value)
+                if demand_val < 0:
+                    return jsonify({"error": f"Demanda em '{date_key}' não pode ser negativa"}), 400
+            except:
+                return jsonify({"error": f"Formato inválido em sporadic_demand. Chave '{date_key}' deve ser YYYY-MM-DD e valor deve ser numérico positivo"}), 400
+        
+        # Validar datas
+        try:
+            period_start_date = data['period_start_date']
+            period_end_date = data['period_end_date']
+            start_cutoff_date = data['start_cutoff_date']
+            end_cutoff_date = data['end_cutoff_date']
+            
+            # Validar formato das datas
+            start_pd = pd.to_datetime(period_start_date)
+            end_pd = pd.to_datetime(period_end_date)
+            start_cutoff_pd = pd.to_datetime(start_cutoff_date)
+            end_cutoff_pd = pd.to_datetime(end_cutoff_date)
+            
+            # Validar lógica das datas
+            if start_pd >= end_pd:
+                return jsonify({"error": "period_start_date deve ser anterior a period_end_date"}), 400
+            if start_cutoff_pd > end_cutoff_pd:
+                return jsonify({"error": "start_cutoff_date deve ser anterior ou igual a end_cutoff_date"}), 400
+            
+        except:
+            return jsonify({"error": "Datas devem estar no formato YYYY-MM-DD"}), 400
+        
+        # Extrair parâmetros específicos de demanda esporádica
+        safety_margin_percent = float(data.get('safety_margin_percent', 8.0))
+        safety_days = int(data.get('safety_days', 2))
+        minimum_stock_percent = float(data.get('minimum_stock_percent', 0.0))
+        max_gap_days = int(data.get('max_gap_days', 999))
+        
+        # Validar parâmetros específicos
+        if safety_margin_percent < 0 or safety_margin_percent > 100:
+            return jsonify({"error": "safety_margin_percent deve estar entre 0 e 100"}), 400
+        if safety_days < 0:
+            return jsonify({"error": "safety_days não pode ser negativo"}), 400
+        if minimum_stock_percent < 0 or minimum_stock_percent > 100:
+            return jsonify({"error": "minimum_stock_percent deve estar entre 0 e 100"}), 400
+        if max_gap_days < 1:
+            return jsonify({"error": "max_gap_days deve ser pelo menos 1"}), 400
+        
+        # Extrair parâmetros avançados de otimização (opcionais)
+        optimization_kwargs = {}
+        optional_params = [
+            'setup_cost', 'holding_cost_rate', 'stockout_cost_multiplier',
+            'service_level', 'min_batch_size', 'max_batch_size',
+            'review_period_days', 'consolidation_window_days',
+            'daily_production_capacity', 'enable_eoq_optimization', 'enable_consolidation'
+        ]
+        
+        for param in optional_params:
+            if param in data:
+                optimization_kwargs[param] = data[param]
+        
+        # Log dos parâmetros específicos
+        logger.info("PARÂMETROS ESPECÍFICOS DE DEMANDA ESPORÁDICA:")
+        logger.info(f"  safety_margin_percent: {safety_margin_percent}%")
+        logger.info(f"  safety_days: {safety_days}")
+        logger.info(f"  minimum_stock_percent: {minimum_stock_percent}%")
+        logger.info(f"  max_gap_days: {max_gap_days}")
+        
+        # Log dos parâmetros de otimização (se fornecidos)
+        if optimization_kwargs:
+            logger.info("PARÂMETROS DE OTIMIZAÇÃO AVANÇADOS:")
+            for param, value in optimization_kwargs.items():
+                logger.info(f"  {param}: {value}")
+        
+        # Análise prévia das demandas
+        demand_dates = list(sporadic_demand.keys())
+        demand_values = list(sporadic_demand.values())
+        total_demand = sum(demand_values)
+        max_demand = max(demand_values)
+        min_demand = min(demand_values)
+        avg_demand = total_demand / len(demand_values)
+        
+        logger.info("ANÁLISE PRÉVIA DAS DEMANDAS ESPORÁDICAS:")
+        logger.info(f"  Total de eventos: {len(sporadic_demand)}")
+        logger.info(f"  Período das demandas: {min(demand_dates)} a {max(demand_dates)}")
+        logger.info(f"  Demanda total: {total_demand}")
+        logger.info(f"  Demanda média por evento: {avg_demand:.2f}")
+        logger.info(f"  Demanda mínima: {min_demand}")
+        logger.info(f"  Demanda máxima: {max_demand}")
+        logger.info(f"  Variação: {((max_demand - min_demand) / avg_demand * 100):.1f}%")
+        
+        # Criar otimizador MRP
+        optimizer = MRPOptimizer()
+        
+        # Executar planejamento de demanda esporádica
+        logger.info("Iniciando planejamento de lotes para demanda esporádica...")
+        result = optimizer.calculate_batches_for_sporadic_demand(
+            sporadic_demand=sporadic_demand,
+            initial_stock=initial_stock,
+            leadtime_days=leadtime_days,
+            period_start_date=period_start_date,
+            period_end_date=period_end_date,
+            start_cutoff_date=start_cutoff_date,
+            end_cutoff_date=end_cutoff_date,
+            safety_margin_percent=safety_margin_percent,
+            safety_days=safety_days,
+            minimum_stock_percent=minimum_stock_percent,
+            max_gap_days=max_gap_days,
+            **optimization_kwargs
+        )
+        
+        # Log dos resultados
+        analytics = result['analytics']
+        summary = analytics['summary']
+        sporadic_metrics = analytics['sporadic_demand_metrics']
+        
+        logger.info("PLANEJAMENTO ESPORÁDICO CONCLUÍDO:")
+        logger.info(f"Total de lotes planejados: {len(result['batches'])}")
+        logger.info(f"Produção total: {summary['total_produced']}")
+        logger.info(f"Taxa de cobertura: {summary['production_coverage_rate']}")
+        logger.info(f"Taxa de atendimento: {summary['demand_fulfillment_rate']}%")
+        logger.info(f"Demandas atendidas: {summary['demands_met_count']}/{summary['demands_met_count'] + summary['demands_unmet_count']}")
+        logger.info(f"Estoque mínimo: {summary['minimum_stock']}")
+        logger.info(f"Estoque final: {summary['final_stock']}")
+        logger.info(f"Stockout ocorreu: {summary['stockout_occurred']}")
+        
+        logger.info("MÉTRICAS ESPECÍFICAS DE DEMANDA ESPORÁDICA:")
+        logger.info(f"Concentração de demanda: {sporadic_metrics['demand_concentration']['concentration_level']}")
+        logger.info(f"Previsibilidade: {sporadic_metrics['demand_predictability']}")
+        logger.info(f"Intervalo médio entre demandas: {sporadic_metrics['interval_statistics']['average_interval_days']} dias")
+        logger.info(f"Picos de demanda detectados: {sporadic_metrics['peak_demand_analysis']['peak_count']}")
+        
+        # Salvar resultados completos para debug
+        with open('mrp_sporadic_results.json', 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=4)
+        logger.info("Resultados salvos em 'mrp_sporadic_results.json'")
+        
+        # Log detalhado dos lotes com informações específicas
+        if result['batches']:
+            logger.info(f"\nLOTES PLANEJADOS PARA DEMANDAS ESPORÁDICAS:")
+            for i, batch in enumerate(result['batches'], 1):
+                analytics_batch = batch['analytics']
+                logger.info(f"  Lote {i}:")
+                logger.info(f"    Data pedido: {batch['order_date']}")
+                logger.info(f"    Data chegada: {batch['arrival_date']}")
+                logger.info(f"    Quantidade: {batch['quantity']}")
+                logger.info(f"    Demanda alvo: {analytics_batch.get('target_demand_date', 'N/A')} ({analytics_batch.get('target_demand_quantity', 'N/A')})")
+                logger.info(f"    Déficit coberto: {analytics_batch.get('shortfall_covered', 'N/A')}")
+                logger.info(f"    Crítico: {'Sim' if analytics_batch.get('is_critical', False) else 'Não'}")
+                logger.info(f"    Urgência: {analytics_batch.get('urgency_level', 'N/A')}")
+                logger.info(f"    Margem segurança: {analytics_batch.get('safety_margin_days', 'N/A')} dias")
+                logger.info(f"    Eficiência: {analytics_batch.get('efficiency_ratio', 'N/A')}")
+        
+        # Log de demandas não atendidas (se houver)
+        if summary['unmet_demand_details']:
+            logger.info(f"\nDEMANDAS NÃO ATENDIDAS ({len(summary['unmet_demand_details'])}):")
+            for unmet in summary['unmet_demand_details']:
+                logger.info(f"  Data: {unmet['date']}")
+                logger.info(f"    Demanda: {unmet['demand']}")
+                logger.info(f"    Estoque disponível: {unmet['available_stock']}")
+                logger.info(f"    Déficit: {unmet['shortage']}")
+        
+        logger.info("="*80)
+        
+        # Converter tipos numpy para tipos nativos do Python
+        def convert_numpy_types(obj):
+            """Converte tipos numpy para tipos nativos do Python"""
+            if isinstance(obj, dict):
+                return {key: convert_numpy_types(value) for key, value in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_numpy_types(item) for item in obj]
+            elif hasattr(obj, 'item'):  # numpy scalar
+                return obj.item()
+            elif hasattr(obj, 'tolist'):  # numpy array
+                return obj.tolist()
+            else:
+                return obj
+        
+        result_converted = convert_numpy_types(result)
+        
+        return jsonify(result_converted)
+        
+    except Exception as ex:
+        logger.error(f"Erro no planejamento de demanda esporádica: {str(ex)}")
+        logger.error(traceback.format_exc())
+        return jsonify({"error": f"Falha no planejamento de demanda esporádica: {str(ex)}"}), 500
+
 if __name__ == "__main__":
     #logger.info("🌐 CORS configurado para permitir requests de qualquer URL")
     logger.info("📡 Servidor iniciando na porta 5000...")

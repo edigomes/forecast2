@@ -1646,6 +1646,931 @@ class MRPOptimizer:
             'analytics': analytics
         }
 
+    def calculate_batches_for_sporadic_demand(
+        self,
+        sporadic_demand: Dict[str, float],
+        initial_stock: float,
+        leadtime_days: int,
+        period_start_date: str,
+        period_end_date: str,
+        start_cutoff_date: str,
+        end_cutoff_date: str,
+        safety_margin_percent: float = 8.0,
+        safety_days: int = 2,
+        minimum_stock_percent: float = 0.0,
+        max_gap_days: int = 999,
+        **kwargs
+    ) -> Dict:
+        """
+        Planeja lotes para atender demanda esporádica em datas específicas.
+        Versão otimizada da função PHP com algoritmos de supply chain.
+        
+        Args:
+            sporadic_demand: Dict {"YYYY-MM-DD": quantidade específica nesta data}
+            initial_stock: Estoque disponível no dia anterior ao início do período
+            leadtime_days: Lead time (em dias) entre pedido e chegada
+            period_start_date: Data inicial do período de cobertura ("YYYY-MM-DD")
+            period_end_date: Data final do período de cobertura ("YYYY-MM-DD")
+            start_cutoff_date: Data de corte para início dos pedidos ("YYYY-MM-DD")
+            end_cutoff_date: Data de corte para fim das produções ("YYYY-MM-DD")
+            safety_margin_percent: Margem de segurança padrão (%)
+            safety_days: Dias de segurança padrão
+            minimum_stock_percent: % da maior demanda como estoque mínimo
+            max_gap_days: Gap máximo entre lotes (999 = sem limite)
+            
+        Returns:
+            Dict com 'batches' e 'analytics' compatível com formato PHP
+        """
+        # Atualizar parâmetros com kwargs
+        self._update_params(kwargs)
+        
+        # Converter datas para pandas Timestamp
+        start_period = pd.to_datetime(period_start_date)
+        end_period = pd.to_datetime(period_end_date)
+        start_cutoff = pd.to_datetime(start_cutoff_date)
+        end_cutoff = pd.to_datetime(end_cutoff_date)
+        
+        # Filtrar e ordenar demandas válidas dentro do período
+        valid_demands = {}
+        for date_str, quantity in sporadic_demand.items():
+            demand_date = pd.to_datetime(date_str)
+            if start_period <= demand_date <= end_period:
+                valid_demands[date_str] = float(quantity)
+        
+        # Ordenar por data
+        valid_demands = dict(sorted(valid_demands.items()))
+        
+        if not valid_demands:
+            # Retorno padrão se não há demandas válidas
+            return clean_for_json({
+                'batches': [],
+                'analytics': {
+                    'summary': {
+                        'initial_stock': round(initial_stock, 2),
+                        'final_stock': round(initial_stock, 2),
+                        'minimum_stock': round(initial_stock, 2),
+                        'minimum_stock_date': period_start_date,
+                        'stockout_occurred': False,
+                        'total_batches': 0,
+                        'total_produced': 0.0,
+                        'production_coverage_rate': '0%',
+                        'stock_consumed': 0.0,
+                        'demand_fulfillment_rate': 100.0,
+                        'demands_met_count': 0,
+                        'demands_unmet_count': 0,
+                        'unmet_demand_details': [],
+                        'average_batch_per_demand': 0
+                    },
+                    'stock_evolution': {},
+                    'critical_points': [],
+                    'production_efficiency': {
+                        'average_batch_size': 0,
+                        'production_line_utilization': 0,
+                        'production_gaps': [],
+                        'lead_time_compliance': 100
+                    },
+                    'demand_analysis': {
+                        'total_demand': 0.0,
+                        'average_daily_demand': 0.0,
+                        'demand_by_month': {},
+                        'period_days': (end_period - start_period).days + 1,
+                        'demand_events': 0,
+                        'average_demand_per_event': 0.0,
+                        'first_demand_date': None,
+                        'last_demand_date': None,
+                        'demand_distribution': {}
+                    },
+                    'sporadic_demand_metrics': {
+                        'demand_concentration': {'concentration_index': 0, 'concentration_level': 'low'},
+                        'interval_statistics': {
+                            'average_interval_days': 0,
+                            'min_interval_days': 0,
+                            'max_interval_days': 0,
+                            'interval_variance': 0
+                        },
+                        'demand_predictability': 'high',
+                        'peak_demand_analysis': {
+                            'peak_count': 0,
+                            'peak_threshold': 0,
+                            'peak_dates': [],
+                            'average_peak_size': 0
+                        }
+                    }
+                }
+            })
+        
+        # Calcular estatísticas básicas
+        total_demand = sum(valid_demands.values())
+        period_days = (end_period - start_period).days + 1
+        avg_daily_demand = total_demand / period_days if period_days > 0 else 0
+        demand_dates = list(valid_demands.keys())
+        
+        # Análise de intervalos entre demandas
+        demand_intervals = self._calculate_demand_intervals(demand_dates)
+        
+        # Análise de demanda por mês
+        demand_by_month = self._group_demand_by_month(valid_demands)
+        
+        # Calcular estoque mínimo absoluto
+        max_demand = max(valid_demands.values()) if valid_demands else 0
+        absolute_minimum_stock = max_demand * (minimum_stock_percent / 100)
+        
+        # Planejar lotes usando algoritmo otimizado
+        batches = self._plan_sporadic_batches(
+            valid_demands=valid_demands,
+            initial_stock=initial_stock,
+            leadtime_days=leadtime_days,
+            start_period=start_period,
+            end_period=end_period,
+            start_cutoff=start_cutoff,
+            end_cutoff=end_cutoff,
+            safety_days=safety_days,
+            safety_margin_percent=safety_margin_percent,
+            absolute_minimum_stock=absolute_minimum_stock,
+            max_gap_days=max_gap_days
+        )
+        
+        # Calcular evolução do estoque
+        stock_evolution = self._calculate_sporadic_stock_evolution(
+            initial_stock, valid_demands, batches, start_period, end_period
+        )
+        
+        # Calcular métricas analíticas completas
+        analytics = self._calculate_sporadic_analytics(
+            batches=batches,
+            valid_demands=valid_demands,
+            initial_stock=initial_stock,
+            stock_evolution=stock_evolution,
+            demand_intervals=demand_intervals,
+            demand_by_month=demand_by_month,
+            avg_daily_demand=avg_daily_demand,
+            period_days=period_days,
+            total_demand=total_demand,
+            demand_dates=demand_dates,
+            start_period=start_period,
+            end_period=end_period
+        )
+        
+        # Atualizar analytics dos lotes com cobertura de demandas
+        batches_with_coverage = self._update_sporadic_batch_analytics_with_coverage(
+            batches, valid_demands, initial_stock, start_period
+        )
+        
+        # Limpar resultado para compatibilidade JSON/PHP
+        result = {
+            'batches': [self._sporadic_batch_to_dict(b) for b in batches_with_coverage],
+            'analytics': analytics
+        }
+        
+        return clean_for_json(result)
+
+    def _calculate_demand_intervals(self, demand_dates: List[str]) -> List[int]:
+        """Calcula intervalos entre demandas consecutivas"""
+        intervals = []
+        for i in range(1, len(demand_dates)):
+            prev_date = pd.to_datetime(demand_dates[i-1])
+            curr_date = pd.to_datetime(demand_dates[i])
+            interval = (curr_date - prev_date).days
+            intervals.append(interval)
+        return intervals
+    
+    def _group_demand_by_month(self, valid_demands: Dict[str, float]) -> Dict[str, float]:
+        """Agrupa demandas por mês"""
+        demand_by_month = {}
+        for date_str, quantity in valid_demands.items():
+            year_month = date_str[:7]  # YYYY-MM
+            demand_by_month[year_month] = demand_by_month.get(year_month, 0) + quantity
+        return {k: round(v, 2) for k, v in demand_by_month.items()}
+    
+    def _plan_sporadic_batches(
+        self,
+        valid_demands: Dict[str, float],
+        initial_stock: float,
+        leadtime_days: int,
+        start_period: pd.Timestamp,
+        end_period: pd.Timestamp,
+        start_cutoff: pd.Timestamp,
+        end_cutoff: pd.Timestamp,
+        safety_days: int,
+        safety_margin_percent: float,
+        absolute_minimum_stock: float,
+        max_gap_days: int
+    ) -> List[BatchResult]:
+        """Algoritmo otimizado para planejar lotes esporádicos"""
+        batches = []
+        production_line_available = start_cutoff
+        
+        for demand_date_str, demand_quantity in valid_demands.items():
+            demand_date = pd.to_datetime(demand_date_str)
+            
+            # Calcular estoque projetado na data da demanda
+            projected_stock = self._calculate_projected_stock_sporadic(
+                initial_stock, valid_demands, batches, demand_date_str, start_period
+            )
+            
+            # Verificar se precisa de lote
+            stock_after_demand = projected_stock - demand_quantity
+            needs_batch = (
+                projected_stock < demand_quantity or 
+                stock_after_demand < absolute_minimum_stock
+            )
+            
+            if needs_batch:
+                # Calcular déficit
+                shortfall = max(
+                    demand_quantity - max(0, projected_stock),
+                    absolute_minimum_stock - max(0, stock_after_demand)
+                )
+                
+                # Determinar datas de chegada e produção
+                target_arrival_date = demand_date - timedelta(days=safety_days)
+                if target_arrival_date > demand_date:
+                    target_arrival_date = demand_date
+                if target_arrival_date < start_period:
+                    target_arrival_date = start_period
+                    
+                target_order_date = target_arrival_date - timedelta(days=leadtime_days)
+                actual_order_date = max(production_line_available, target_order_date)
+                
+                if actual_order_date < start_cutoff:
+                    actual_order_date = start_cutoff
+                    
+                actual_arrival_date = actual_order_date + timedelta(days=leadtime_days)
+                
+                # Verificar viabilidade
+                if actual_arrival_date > end_cutoff:
+                    days_after_cutoff = (actual_arrival_date - end_cutoff).days
+                    if days_after_cutoff > 30:  # Limite de tolerância
+                        continue
+                
+                # Calcular quantidade otimizada do lote
+                batch_quantity = self._calculate_optimal_sporadic_batch_quantity(
+                    shortfall=shortfall,
+                    valid_demands=valid_demands,
+                    target_demand_date=demand_date_str,
+                    arrival_date=actual_arrival_date.strftime('%Y-%m-%d'),
+                    projected_stock=projected_stock,
+                    existing_batches=batches,
+                    initial_stock=initial_stock,
+                    safety_margin_percent=safety_margin_percent
+                )
+                
+                # Calcular métricas do lote
+                stock_before_arrival = self._calculate_projected_stock_sporadic(
+                    initial_stock, valid_demands, batches, 
+                    actual_arrival_date.strftime('%Y-%m-%d'), start_period
+                )
+                
+                # Criar analytics do lote
+                batch_analytics = self._create_sporadic_batch_analytics(
+                    demand_date_str=demand_date_str,
+                    demand_quantity=demand_quantity,
+                    shortfall=shortfall,
+                    batch_quantity=batch_quantity,
+                    stock_before_arrival=stock_before_arrival,
+                    actual_arrival_date=actual_arrival_date,
+                    target_arrival_date=target_arrival_date,
+                    leadtime_days=leadtime_days,
+                    safety_days=safety_days
+                )
+                
+                # Criar resultado do lote
+                batch = BatchResult(
+                    order_date=actual_order_date.strftime('%Y-%m-%d'),
+                    arrival_date=actual_arrival_date.strftime('%Y-%m-%d'),
+                    quantity=round(batch_quantity, 3),
+                    analytics=batch_analytics
+                )
+                
+                batches.append(batch)
+                
+                # Atualizar disponibilidade da linha
+                production_line_available = actual_order_date + timedelta(days=1)
+        
+        return batches
+
+    def _calculate_projected_stock_sporadic(
+        self,
+        initial_stock: float,
+        valid_demands: Dict[str, float],
+        existing_batches: List[BatchResult],
+        target_date: str,
+        start_period: pd.Timestamp
+    ) -> float:
+        """Calcula estoque projetado para uma data específica"""
+        current_stock = initial_stock
+        target_dt = pd.to_datetime(target_date)
+        current_date = start_period
+        
+        # Criar mapa de chegadas
+        arrivals = {}
+        for batch in existing_batches:
+            arrival_date = batch.arrival_date
+            if arrival_date not in arrivals:
+                arrivals[arrival_date] = 0
+            arrivals[arrival_date] += batch.quantity
+        
+        # Simular até a data alvo
+        while current_date < target_dt:
+            date_str = current_date.strftime('%Y-%m-%d')
+            
+            # Adicionar chegadas
+            if date_str in arrivals:
+                current_stock += arrivals[date_str]
+                
+            # Subtrair demanda
+            if date_str in valid_demands:
+                current_stock -= valid_demands[date_str]
+                
+            current_date += timedelta(days=1)
+            
+        return current_stock
+    
+    def _calculate_optimal_sporadic_batch_quantity(
+        self,
+        shortfall: float,
+        valid_demands: Dict[str, float],
+        target_demand_date: str,
+        arrival_date: str,
+        projected_stock: float,
+        existing_batches: List[BatchResult],
+        initial_stock: float,
+        safety_margin_percent: float
+    ) -> float:
+        """Calcula quantidade otimizada considerando demandas futuras"""
+        base_quantity = shortfall
+        
+        # Aplicar margem de segurança
+        safety_margin = base_quantity * (safety_margin_percent / 100)
+        quantity_with_safety = base_quantity + safety_margin
+        
+        # Considerar demandas futuras próximas (próximos 30 dias)
+        arrival_dt = pd.to_datetime(arrival_date)
+        future_demand = 0
+        
+        for demand_date_str, demand_qty in valid_demands.items():
+            demand_dt = pd.to_datetime(demand_date_str)
+            days_after_arrival = (demand_dt - arrival_dt).days
+            
+            if 0 < days_after_arrival <= 30:  # Próximos 30 dias
+                future_demand += demand_qty
+        
+        # Considerar uma fração da demanda futura
+        future_demand_factor = min(0.3, future_demand / base_quantity) if base_quantity > 0 else 0
+        
+        # Quantidade final otimizada
+        optimal_quantity = quantity_with_safety + (future_demand * future_demand_factor)
+        
+        # Aplicar limites mínimos e máximos
+        optimal_quantity = max(optimal_quantity, self.params.min_batch_size)
+        optimal_quantity = min(optimal_quantity, self.params.max_batch_size)
+        
+        return optimal_quantity
+    
+    def _calculate_demands_covered_sporadic(
+        self,
+        batch: BatchResult,
+        valid_demands: Dict[str, float],
+        initial_stock: float,
+        existing_batches: List[BatchResult],
+        start_period: pd.Timestamp
+    ) -> List[Dict]:
+        """
+        Calcula quais demandas específicas este lote está cobrindo.
+        Retorna lista de objetos com date e quantity das demandas cobertas por este lote.
+        """
+        demands_covered = []
+        arrival_date = pd.to_datetime(batch.arrival_date)
+        
+        # Simular estoque até a chegada do lote
+        current_stock = self._calculate_projected_stock_sporadic(
+            initial_stock, valid_demands, existing_batches, batch.arrival_date, start_period
+        )
+        
+        # Adicionar quantidade do lote atual
+        current_stock += batch.quantity
+        
+        # Verificar demandas após a chegada do lote, em ordem cronológica
+        future_demands = {}
+        for date_str, quantity in valid_demands.items():
+            demand_date = pd.to_datetime(date_str)
+            if demand_date >= arrival_date:
+                future_demands[date_str] = quantity
+        
+        # Ordenar demandas futuras por data
+        sorted_future_demands = dict(sorted(future_demands.items()))
+        
+        # Determinar quais demandas este lote pode cobrir
+        for demand_date_str, demand_qty in sorted_future_demands.items():
+            if current_stock >= demand_qty:
+                demands_covered.append({
+                    "date": demand_date_str,
+                    "quantity": round(demand_qty, 2)
+                })
+                current_stock -= demand_qty
+            else:
+                # Se não consegue cobrir completamente, ainda pode cobrir parcialmente
+                # Mas para simplicidade, vamos considerar apenas cobertura completa
+                break
+        
+        return demands_covered
+
+    def _update_sporadic_batch_analytics_with_coverage(
+        self,
+        batches: List[BatchResult],
+        valid_demands: Dict[str, float],
+        initial_stock: float,
+        start_period: pd.Timestamp
+    ) -> List[BatchResult]:
+        """
+        Atualiza os analytics dos lotes esporádicos com informações de cobertura,
+        incluindo demands_covered para cada lote.
+        """
+        updated_batches = []
+        
+        for i, batch in enumerate(batches):
+            # Lotes existentes até este ponto (não incluindo o atual)
+            existing_batches = batches[:i]
+            
+            # Calcular demandas cobertas por este lote
+            demands_covered = self._calculate_demands_covered_sporadic(
+                batch, valid_demands, initial_stock, existing_batches, start_period
+            )
+            
+            # Atualizar analytics
+            updated_analytics = batch.analytics.copy()
+            updated_analytics['demands_covered'] = demands_covered
+            updated_analytics['coverage_count'] = len(demands_covered)
+            
+            # Calcular dias de cobertura baseado nas demandas específicas cobertas
+            if demands_covered:
+                first_covered = pd.to_datetime(demands_covered[0]["date"])
+                last_covered = pd.to_datetime(demands_covered[-1]["date"])
+                coverage_days_span = (last_covered - pd.to_datetime(batch.arrival_date)).days + 1
+                updated_analytics['coverage_days'] = max(1, coverage_days_span)
+            else:
+                updated_analytics['coverage_days'] = 0
+            
+            # Criar novo lote com analytics atualizados
+            updated_batch = BatchResult(
+                order_date=batch.order_date,
+                arrival_date=batch.arrival_date,
+                quantity=batch.quantity,
+                analytics=updated_analytics
+            )
+            updated_batches.append(updated_batch)
+        
+        return updated_batches
+
+    def _create_sporadic_batch_analytics(
+        self,
+        demand_date_str: str,
+        demand_quantity: float,
+        shortfall: float,
+        batch_quantity: float,
+        stock_before_arrival: float,
+        actual_arrival_date: pd.Timestamp,
+        target_arrival_date: pd.Timestamp,
+        leadtime_days: int,
+        safety_days: int
+    ) -> Dict:
+        """Cria analytics específicos para lotes esporádicos"""
+        demand_date = pd.to_datetime(demand_date_str)
+        stock_after_arrival = stock_before_arrival + batch_quantity
+        
+        # Determinar criticidade
+        is_critical = actual_arrival_date > demand_date
+        arrival_delay = max(0, (actual_arrival_date - target_arrival_date).days)
+        safety_margin_days = (demand_date - actual_arrival_date).days
+        
+        # Nível de urgência
+        if stock_before_arrival < 0:
+            urgency_level = 'critical'
+        elif stock_before_arrival < demand_quantity:
+            urgency_level = 'high'
+        else:
+            urgency_level = 'normal'
+            
+        # Ratio de eficiência
+        efficiency_ratio = round(batch_quantity / demand_quantity, 2) if demand_quantity > 0 else 0
+        
+        return {
+            'stock_before_arrival': round(stock_before_arrival, 2),
+            'stock_after_arrival': round(stock_after_arrival, 2),
+            'consumption_since_last_arrival': 0,  # Será calculado posteriormente
+            'coverage_days': 0,  # Será calculado na função _update_sporadic_batch_analytics_with_coverage
+            'actual_lead_time': leadtime_days,
+            'urgency_level': urgency_level,
+            'production_start_delay': 0,  # Será calculado posteriormente
+            'arrival_delay': arrival_delay,
+            # Métricas específicas para demanda esporádica
+            'target_demand_date': demand_date_str,
+            'target_demand_quantity': demand_quantity,
+            'shortfall_covered': round(shortfall, 2),
+            'demands_covered': [],  # Será calculado na função _update_sporadic_batch_analytics_with_coverage
+            'coverage_count': 0,  # Será calculado na função _update_sporadic_batch_analytics_with_coverage
+            'is_critical': is_critical,
+            'safety_margin_days': safety_margin_days,
+            'efficiency_ratio': efficiency_ratio
+        }
+    
+    def _calculate_sporadic_stock_evolution(
+        self,
+        initial_stock: float,
+        valid_demands: Dict[str, float],
+        batches: List[BatchResult],
+        start_period: pd.Timestamp,
+        end_period: pd.Timestamp
+    ) -> Dict[str, float]:
+        """Calcula evolução detalhada do estoque para demandas esporádicas"""
+        stock_evolution = {}
+        current_stock = initial_stock
+        current_date = start_period
+        
+        # Criar mapa de chegadas
+        arrivals = {}
+        for batch in batches:
+            arrival_date = batch.arrival_date
+            if arrival_date not in arrivals:
+                arrivals[arrival_date] = 0
+            arrivals[arrival_date] += batch.quantity
+        
+        # Simular dia a dia
+        while current_date <= end_period:
+            date_str = current_date.strftime('%Y-%m-%d')
+            
+            # Adicionar chegadas do dia
+            if date_str in arrivals:
+                current_stock += arrivals[date_str]
+                
+            # Subtrair demanda do dia
+            if date_str in valid_demands:
+                current_stock -= valid_demands[date_str]
+                
+            # Registrar estoque ao final do dia
+            stock_evolution[date_str] = round(current_stock, 2)
+            
+            current_date += timedelta(days=1)
+            
+        return stock_evolution
+    
+    def _sporadic_batch_to_dict(self, batch: BatchResult) -> Dict:
+        """Converte BatchResult esporádico para dicionário compatível com PHP"""
+        analytics = batch.analytics.copy()
+        
+        # Garantir campos obrigatórios para demanda esporádica
+        sporadic_fields = {
+            'target_demand_date': '',
+            'target_demand_quantity': 0,
+            'shortfall_covered': 0,
+            'demands_covered': [],
+            'coverage_count': 0,
+            'is_critical': False,
+            'safety_margin_days': 0,
+            'efficiency_ratio': 0
+        }
+        
+        for field, default_value in sporadic_fields.items():
+            if field not in analytics:
+                analytics[field] = default_value
+        
+        return {
+            'order_date': batch.order_date,
+            'arrival_date': batch.arrival_date,
+            'quantity': batch.quantity,
+            'analytics': analytics
+        }
+
+    def _calculate_sporadic_analytics(
+        self,
+        batches: List[BatchResult],
+        valid_demands: Dict[str, float],
+        initial_stock: float,
+        stock_evolution: Dict[str, float],
+        demand_intervals: List[int],
+        demand_by_month: Dict[str, float],
+        avg_daily_demand: float,
+        period_days: int,
+        total_demand: float,
+        demand_dates: List[str],
+        start_period: pd.Timestamp,
+        end_period: pd.Timestamp
+    ) -> Dict:
+        """Calcula analytics completos para demandas esporádicas"""
+        
+        # Encontrar estoque mínimo
+        stock_values = list(stock_evolution.values())
+        min_stock = min(stock_values) if stock_values else initial_stock
+        min_stock_date = None
+        for date, stock in stock_evolution.items():
+            if stock == min_stock:
+                min_stock_date = date
+                break
+        
+        # Calcular totais
+        total_produced = sum(b.quantity for b in batches)
+        final_stock = stock_values[-1] if stock_values else initial_stock
+        
+        # Análise de atendimento de demandas
+        demand_fulfillment = self._analyze_sporadic_demand_fulfillment(
+            valid_demands, stock_evolution
+        )
+        
+        # Pontos críticos
+        critical_points = []
+        for date, stock in stock_evolution.items():
+            days_coverage = stock / avg_daily_demand if avg_daily_demand > 0 else 0
+            if stock < 0 or days_coverage < 10:
+                severity = 'stockout' if stock < 0 else ('critical' if days_coverage < 5 else 'warning')
+                critical_points.append({
+                    'date': date,
+                    'stock': stock,
+                    'days_of_coverage': round(days_coverage, 1),
+                    'severity': severity,
+                    'demand_on_date': valid_demands.get(date, 0)
+                })
+        
+        # Métricas de produção
+        production_efficiency = self._calculate_sporadic_production_efficiency(
+            batches, valid_demands, avg_daily_demand, start_period, end_period
+        )
+        
+        # Métricas específicas para demanda esporádica
+        sporadic_metrics = self._calculate_sporadic_specific_metrics(
+            valid_demands, demand_intervals, period_days, batches
+        )
+        
+        # Calcular datas de reposição (similar à função MRP normal)
+        stock_end_of_period = self._calculate_sporadic_stock_end_of_period(
+            stock_evolution, batches, avg_daily_demand
+        )
+        
+        # Extrair order_dates (compatível com função MRP normal)
+        order_dates = [b.order_date for b in batches]
+        
+        # Analytics finais
+        return {
+            'summary': {
+                'initial_stock': round(initial_stock, 2),
+                'final_stock': round(final_stock, 2),
+                'minimum_stock': round(min_stock, 2),
+                'minimum_stock_date': min_stock_date,
+                'stockout_occurred': bool(min_stock < 0),
+                'total_batches': len(batches),
+                'total_produced': round(total_produced, 2),
+                'production_coverage_rate': f"{round((total_produced / total_demand * 100), 0):.0f}%" if total_demand > 0 else "100%",
+                'stock_consumed': round(total_demand, 2),
+                'demand_fulfillment_rate': demand_fulfillment['fulfillment_rate'],
+                'demands_met_count': demand_fulfillment['demands_met'],
+                'demands_unmet_count': demand_fulfillment['demands_unmet'],
+                'unmet_demand_details': demand_fulfillment['unmet_details'],
+                'average_batch_per_demand': round(len(batches) / len(valid_demands), 2) if valid_demands else 0
+            },
+            'stock_evolution': stock_evolution,
+            'critical_points': critical_points,
+            'production_efficiency': production_efficiency,
+            'demand_analysis': {
+                'total_demand': round(total_demand, 2),
+                'average_daily_demand': round(avg_daily_demand, 2),
+                'demand_by_month': demand_by_month,
+                'period_days': period_days,
+                'demand_events': len(valid_demands),
+                'average_demand_per_event': round(total_demand / len(valid_demands), 2) if valid_demands else 0,
+                'first_demand_date': demand_dates[0] if demand_dates else None,
+                'last_demand_date': demand_dates[-1] if demand_dates else None,
+                'demand_distribution': valid_demands
+            },
+            'sporadic_demand_metrics': sporadic_metrics,
+            'stock_end_of_period': stock_end_of_period
+        }
+    
+    def _analyze_sporadic_demand_fulfillment(
+        self, 
+        valid_demands: Dict[str, float], 
+        stock_evolution: Dict[str, float]
+    ) -> Dict:
+        """Analisa atendimento das demandas esporádicas"""
+        demands_met = 0
+        demands_unmet = 0
+        unmet_details = []
+        
+        for date, demand in valid_demands.items():
+            stock_available = stock_evolution.get(date, 0)
+            if stock_available >= demand:
+                demands_met += 1
+            else:
+                demands_unmet += 1
+                shortage = demand - max(0, stock_available)
+                unmet_details.append({
+                    'date': date,
+                    'demand': demand,
+                    'available_stock': max(0, stock_available),
+                    'shortage': round(shortage, 2)
+                })
+        
+        total_demands = len(valid_demands)
+        fulfillment_rate = round((demands_met / total_demands * 100), 2) if total_demands > 0 else 100
+        
+        return {
+            'fulfillment_rate': fulfillment_rate,
+            'demands_met': demands_met,
+            'demands_unmet': demands_unmet,
+            'unmet_details': unmet_details
+        }
+    
+    def _calculate_sporadic_production_efficiency(
+        self,
+        batches: List[BatchResult],
+        valid_demands: Dict[str, float],
+        avg_daily_demand: float,
+        start_period: pd.Timestamp,
+        end_period: pd.Timestamp
+    ) -> Dict:
+        """Calcula eficiência de produção para demandas esporádicas"""
+        if not batches:
+            return {
+                'average_batch_size': 0,
+                'production_line_utilization': 0,
+                'production_gaps': [],
+                'lead_time_compliance': 100,
+                'batch_efficiency': 0,
+                'critical_deliveries': 0,
+                'average_safety_margin': 0
+            }
+        
+        total_produced = sum(b.quantity for b in batches)
+        avg_batch_size = total_produced / len(batches)
+        
+        # Calcular gaps de produção
+        production_gaps = []
+        for i in range(len(batches) - 1):
+            current_arrival = pd.to_datetime(batches[i].arrival_date)
+            next_order = pd.to_datetime(batches[i + 1].order_date)
+            gap_days = (next_order - current_arrival).days
+            
+            gap_type = 'continuous' if gap_days <= 1 else ('idle' if gap_days > 7 else 'normal')
+            production_gaps.append({
+                'from_batch': i + 1,
+                'to_batch': i + 2,
+                'gap_days': gap_days,
+                'gap_type': gap_type
+            })
+        
+        # Calcular entregas críticas
+        critical_deliveries = sum(1 for b in batches if b.analytics.get('is_critical', False))
+        
+        # Calcular margem de segurança média
+        safety_margins = [b.analytics.get('safety_margin_days', 0) for b in batches]
+        avg_safety_margin = round(sum(safety_margins) / len(safety_margins), 1) if safety_margins else 0
+        
+        # Utilização da linha (simplificado)
+        total_days = (end_period - start_period).days + 1
+        production_days = len(batches)  # Simplificação
+        utilization = round((production_days / total_days * 100), 2) if total_days > 0 else 0
+        
+        return {
+            'average_batch_size': round(avg_batch_size, 2),
+            'production_line_utilization': utilization,
+            'production_gaps': production_gaps,
+            'lead_time_compliance': 100,  # Assumindo 100% para simplificar
+            'batch_efficiency': round((total_produced / sum(valid_demands.values()) * 100), 2) if valid_demands else 100,
+            'critical_deliveries': critical_deliveries,
+            'average_safety_margin': avg_safety_margin
+        }
+    
+    def _calculate_sporadic_specific_metrics(
+        self,
+        valid_demands: Dict[str, float],
+        demand_intervals: List[int],
+        period_days: int,
+        batches: List[BatchResult]
+    ) -> Dict:
+        """Calcula métricas específicas para demanda esporádica"""
+        avg_demand_per_event = sum(valid_demands.values()) / len(valid_demands) if valid_demands else 0
+        
+        # Estatísticas de intervalos
+        interval_stats = {
+            'average_interval_days': round(sum(demand_intervals) / len(demand_intervals), 1) if demand_intervals else 0,
+            'min_interval_days': min(demand_intervals) if demand_intervals else 0,
+            'max_interval_days': max(demand_intervals) if demand_intervals else 0,
+            'interval_variance': round(np.var(demand_intervals), 2) if demand_intervals else 0
+        }
+        
+        # Previsibilidade da demanda
+        cv = interval_stats['interval_variance'] / interval_stats['average_interval_days'] if interval_stats['average_interval_days'] > 0 else 0
+        predictability = 'high' if cv < 0.2 else ('medium' if cv < 0.5 else 'low')
+        
+        # Análise de picos de demanda
+        peak_threshold = avg_demand_per_event * 1.5
+        peak_demands = [(date, qty) for date, qty in valid_demands.items() if qty > peak_threshold]
+        
+        return {
+            'demand_concentration': self._calculate_demand_concentration(valid_demands, period_days),
+            'interval_statistics': interval_stats,
+            'demand_predictability': predictability,
+            'peak_demand_analysis': {
+                'peak_count': len(peak_demands),
+                'peak_threshold': round(peak_threshold, 2),
+                'peak_dates': [date for date, _ in peak_demands],
+                'average_peak_size': round(sum(qty for _, qty in peak_demands) / len(peak_demands), 2) if peak_demands else 0
+            }
+        }
+    
+    def _calculate_demand_concentration(
+        self, 
+        valid_demands: Dict[str, float], 
+        period_days: int
+    ) -> Dict:
+        """Calcula concentração da demanda"""
+        if not valid_demands or period_days == 0:
+            return {'concentration_index': 0, 'concentration_level': 'low'}
+        
+        # Índice de concentração: % de dias com demanda vs total de dias
+        days_with_demand = len(valid_demands)
+        concentration_index = round((days_with_demand / period_days), 3)
+        
+        if concentration_index > 0.5:
+            concentration_level = 'high'
+        elif concentration_index > 0.2:
+            concentration_level = 'medium'
+        else:
+            concentration_level = 'low'
+            
+        return {
+            'concentration_index': concentration_index,
+            'concentration_level': concentration_level,
+            'days_with_demand': days_with_demand,
+            'total_period_days': period_days
+        }
+    
+    def _calculate_sporadic_stock_end_of_period(
+        self,
+        stock_evolution: Dict[str, float],
+        batches: List[BatchResult],
+        avg_daily_demand: float
+    ) -> Dict:
+        """
+        Calcula estoque ao final de cada período para demandas esporádicas
+        Inclui as datas de reposição (after_batch_arrival)
+        """
+        result = {
+            'monthly': [],
+            'after_batch_arrival': [],
+            'before_batch_arrival': []
+        }
+        
+        # Agrupar por mês
+        monthly_stocks = {}
+        for date, stock in stock_evolution.items():
+            month = date[:7]  # YYYY-MM
+            if month not in monthly_stocks or date > monthly_stocks[month]['date']:
+                monthly_stocks[month] = {
+                    'date': date,
+                    'stock': stock
+                }
+        
+        # Pegar último dia de cada mês
+        for month, data in sorted(monthly_stocks.items()):
+            result['monthly'].append({
+                'period': month,
+                'end_date': data['date'],
+                'stock': round(data['stock'], 2),
+                'days_of_coverage': round(data['stock'] / avg_daily_demand, 1) if avg_daily_demand > 0 else 0
+            })
+        
+        # Estoque após chegada de cada lote (DATAS DE REPOSIÇÃO)
+        for i, batch in enumerate(batches):
+            batch_number = i + 1
+            arrival_date = batch.arrival_date
+            
+            if arrival_date in stock_evolution:
+                stock_after = stock_evolution[arrival_date]
+                stock_before = batch.analytics.get('stock_before_arrival', 0)
+                
+                result['after_batch_arrival'].append({
+                    'batch_number': batch_number,
+                    'date': arrival_date,
+                    'stock_before': round(stock_before, 2),
+                    'batch_quantity': round(batch.quantity, 3),
+                    'stock_after': round(stock_after, 2),
+                    'coverage_gained': batch.analytics.get('coverage_days', 0)
+                })
+        
+        # Estoque antes da chegada do próximo lote
+        for i in range(len(batches) - 1):
+            next_batch_date = batches[i + 1].arrival_date
+            day_before = (pd.to_datetime(next_batch_date) - timedelta(days=1)).strftime('%Y-%m-%d')
+            
+            if day_before in stock_evolution:
+                result['before_batch_arrival'].append({
+                    'before_batch': i + 2,
+                    'date': day_before,
+                    'stock': round(stock_evolution[day_before], 2),
+                    'days_until_arrival': 1
+                })
+        
+        return result
+
 
 # Exemplo de uso e funções auxiliares
 
