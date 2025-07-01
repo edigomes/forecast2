@@ -92,6 +92,8 @@ class OptimizationParams:
     min_consolidation_benefit: float = 50.0  # Benefício mínimo para consolidar (independente de setup_cost)
     operational_efficiency_weight: float = 1.0  # Peso dos benefícios operacionais (0.5-2.0)
     overlap_prevention_priority: bool = True  # Priorizar prevenção de overlap de lead time
+    # NOVO PARÂMETRO para controlar lead times longos
+    max_batches_long_leadtime: int = 3  # Máximo de lotes para lead times longos (>14 dias)
 
 
 class MRPOptimizer:
@@ -1023,7 +1025,7 @@ class MRPOptimizer:
             first_order_date = start_cutoff
             first_arrival_date = first_order_date + pd.Timedelta(days=leadtime_days)
         
-        # Calcular quantos lotes são necessários (máximo 3-4 lotes para período de 6 meses)
+        # Calcular quantos lotes são necessários (configurável via max_batches_long_leadtime)
         max_batch_size = self.params.max_batch_size
         quantity_needed = total_demand + safety_margin - initial_stock
         
@@ -1031,8 +1033,9 @@ class MRPOptimizer:
             return batches
             
         # Número de lotes baseado no tamanho máximo e lead time
-        # Para lead time de 50 dias, máximo 2-3 lotes por período
-        num_batches = min(3, max(1, int(np.ceil(quantity_needed / max_batch_size))))
+        # Agora controlado pelo parâmetro max_batches_long_leadtime
+        max_batches_allowed = getattr(self.params, 'max_batches_long_leadtime', 3)
+        num_batches = min(max_batches_allowed, max(1, int(np.ceil(quantity_needed / max_batch_size))))
         quantity_per_batch = quantity_needed / num_batches
         
         # Ajustar para múltiplos do lote mínimo
