@@ -1,0 +1,424 @@
+{
+    "batches": [
+        {
+            "order_date": "2025-05-22",
+            "arrival_date": "2025-07-31",
+            "quantity": 2800.0,
+            "analytics": {
+                "stock_before_arrival": 464.0,
+                "stock_after_arrival": 3264.0,
+                "consumption_since_last_arrival": 0,
+                "coverage_days": 6,
+                "actual_lead_time": 70,
+                "urgency_level": "high",
+                "production_start_delay": 0,
+                "arrival_delay": 0,
+                "target_demand_date": "2025-08-05",
+                "target_demand_quantity": 2800.0,
+                "shortfall_covered": 2336.0,
+                "demands_covered": [
+                    {
+                        "date": "2025-08-05",
+                        "quantity": 2800.0
+                    }
+                ],
+                "coverage_count": 1,
+                "is_critical": false,
+                "safety_margin_days": 5,
+                "efficiency_ratio": 1.0,
+                "advanced_mrp_strategy": "hybrid_consolidation",
+                "eoq_used": 1293.02,
+                "safety_stock_calculated": 0,
+                "reorder_point_used": 3843.14,
+                "service_level_z_score": 2.054,
+                "abc_classification": "B",
+                "xyz_classification": "X",
+                "demand_variability_cv": 0.0,
+                "demand_regularity_score": 1.0,
+                "seasonality_detected": false,
+                "trend_direction": "stable",
+                "holding_cost_impact": 11506.85,
+                "setup_cost_allocation": 250.0,
+                "total_cost_estimated": 11756.85,
+                "optimization_quality": "good",
+                "strategy_group_size": 1,
+                "strategy_consolidation_benefit": 0,
+                "strategy_demands_covered": [
+                    {
+                        "date": "2025-08-05",
+                        "quantity": 2800.0
+                    }
+                ],
+                "strategy_group_span_days": 0
+            }
+        },
+        {
+            "order_date": "2025-07-12",
+            "arrival_date": "2025-09-20",
+            "quantity": 2800.0,
+            "analytics": {
+                "stock_before_arrival": 464.0,
+                "stock_after_arrival": 3264.0,
+                "consumption_since_last_arrival": 0,
+                "coverage_days": 6,
+                "actual_lead_time": 70,
+                "urgency_level": "high",
+                "production_start_delay": 0,
+                "arrival_delay": 0,
+                "target_demand_date": "2025-09-25",
+                "target_demand_quantity": 2800.0,
+                "shortfall_covered": 2336.0,
+                "demands_covered": [
+                    {
+                        "date": "2025-09-25",
+                        "quantity": 2800.0
+                    }
+                ],
+                "coverage_count": 1,
+                "is_critical": false,
+                "safety_margin_days": 5,
+                "efficiency_ratio": 1.0,
+                "advanced_mrp_strategy": "hybrid_consolidation",
+                "eoq_used": 1293.02,
+                "safety_stock_calculated": 0,
+                "reorder_point_used": 3843.14,
+                "service_level_z_score": 2.054,
+                "abc_classification": "B",
+                "xyz_classification": "X",
+                "demand_variability_cv": 0.0,
+                "demand_regularity_score": 1.0,
+                "seasonality_detected": false,
+                "trend_direction": "stable",
+                "holding_cost_impact": 11506.85,
+                "setup_cost_allocation": 250.0,
+                "total_cost_estimated": 11756.85,
+                "optimization_quality": "good",
+                "strategy_group_size": 1,
+                "strategy_consolidation_benefit": 0,
+                "strategy_demands_covered": [
+                    {
+                        "date": "2025-09-25",
+                        "quantity": 2800.0
+                    }
+                ],
+                "strategy_group_span_days": 0
+            }
+        }
+    ],
+    "analytics": {
+        "summary": {
+            "initial_stock": 464.0,
+            "final_stock": 464.0,
+            "minimum_stock": 464.0,
+            "minimum_stock_date": "2025-05-17",
+            "stockout_occurred": false,
+            "total_batches": 2,
+            "total_produced": 5600.0,
+            "production_coverage_rate": "100%",
+            "stock_consumed": 5600.0,
+            "demand_fulfillment_rate": 0.0,
+            "demands_met_count": 0,
+            "demands_unmet_count": 2,
+            "unmet_demand_details": [
+                {
+                    "date": "2025-08-05",
+                    "demand": 2800.0,
+                    "available_stock": 464.0,
+                    "shortage": 2336.0
+                },
+                {
+                    "date": "2025-09-25",
+                    "demand": 2800.0,
+                    "available_stock": 464.0,
+                    "shortage": 2336.0
+                }
+            ],
+            "average_batch_per_demand": 1.0
+        },
+        "stock_evolution": {
+            "2025-05-17": 464.0,
+            "2025-05-18": 464.0,
+            "2025-05-19": 464.0,
+            "2025-05-20": 464.0,
+            "2025-05-21": 464.0,
+            "2025-05-22": 464.0,
+            "2025-05-23": 464.0,
+            "2025-05-24": 464.0,
+            "2025-05-25": 464.0,
+            "2025-05-26": 464.0,
+            "2025-05-27": 464.0,
+            "2025-05-28": 464.0,
+            "2025-05-29": 464.0,
+            "2025-05-30": 464.0,
+            "2025-05-31": 464.0,
+            "2025-06-01": 464.0,
+            "2025-06-02": 464.0,
+            "2025-06-03": 464.0,
+            "2025-06-04": 464.0,
+            "2025-06-05": 464.0,
+            "2025-06-06": 464.0,
+            "2025-06-07": 464.0,
+            "2025-06-08": 464.0,
+            "2025-06-09": 464.0,
+            "2025-06-10": 464.0,
+            "2025-06-11": 464.0,
+            "2025-06-12": 464.0,
+            "2025-06-13": 464.0,
+            "2025-06-14": 464.0,
+            "2025-06-15": 464.0,
+            "2025-06-16": 464.0,
+            "2025-06-17": 464.0,
+            "2025-06-18": 464.0,
+            "2025-06-19": 464.0,
+            "2025-06-20": 464.0,
+            "2025-06-21": 464.0,
+            "2025-06-22": 464.0,
+            "2025-06-23": 464.0,
+            "2025-06-24": 464.0,
+            "2025-06-25": 464.0,
+            "2025-06-26": 464.0,
+            "2025-06-27": 464.0,
+            "2025-06-28": 464.0,
+            "2025-06-29": 464.0,
+            "2025-06-30": 464.0,
+            "2025-07-01": 464.0,
+            "2025-07-02": 464.0,
+            "2025-07-03": 464.0,
+            "2025-07-04": 464.0,
+            "2025-07-05": 464.0,
+            "2025-07-06": 464.0,
+            "2025-07-07": 464.0,
+            "2025-07-08": 464.0,
+            "2025-07-09": 464.0,
+            "2025-07-10": 464.0,
+            "2025-07-11": 464.0,
+            "2025-07-12": 464.0,
+            "2025-07-13": 464.0,
+            "2025-07-14": 464.0,
+            "2025-07-15": 464.0,
+            "2025-07-16": 464.0,
+            "2025-07-17": 464.0,
+            "2025-07-18": 464.0,
+            "2025-07-19": 464.0,
+            "2025-07-20": 464.0,
+            "2025-07-21": 464.0,
+            "2025-07-22": 464.0,
+            "2025-07-23": 464.0,
+            "2025-07-24": 464.0,
+            "2025-07-25": 464.0,
+            "2025-07-26": 464.0,
+            "2025-07-27": 464.0,
+            "2025-07-28": 464.0,
+            "2025-07-29": 464.0,
+            "2025-07-30": 464.0,
+            "2025-07-31": 3264.0,
+            "2025-08-01": 3264.0,
+            "2025-08-02": 3264.0,
+            "2025-08-03": 3264.0,
+            "2025-08-04": 3264.0,
+            "2025-08-05": 464.0,
+            "2025-08-06": 464.0,
+            "2025-08-07": 464.0,
+            "2025-08-08": 464.0,
+            "2025-08-09": 464.0,
+            "2025-08-10": 464.0,
+            "2025-08-11": 464.0,
+            "2025-08-12": 464.0,
+            "2025-08-13": 464.0,
+            "2025-08-14": 464.0,
+            "2025-08-15": 464.0,
+            "2025-08-16": 464.0,
+            "2025-08-17": 464.0,
+            "2025-08-18": 464.0,
+            "2025-08-19": 464.0,
+            "2025-08-20": 464.0,
+            "2025-08-21": 464.0,
+            "2025-08-22": 464.0,
+            "2025-08-23": 464.0,
+            "2025-08-24": 464.0,
+            "2025-08-25": 464.0,
+            "2025-08-26": 464.0,
+            "2025-08-27": 464.0,
+            "2025-08-28": 464.0,
+            "2025-08-29": 464.0,
+            "2025-08-30": 464.0,
+            "2025-08-31": 464.0,
+            "2025-09-01": 464.0,
+            "2025-09-02": 464.0,
+            "2025-09-03": 464.0,
+            "2025-09-04": 464.0,
+            "2025-09-05": 464.0,
+            "2025-09-06": 464.0,
+            "2025-09-07": 464.0,
+            "2025-09-08": 464.0,
+            "2025-09-09": 464.0,
+            "2025-09-10": 464.0,
+            "2025-09-11": 464.0,
+            "2025-09-12": 464.0,
+            "2025-09-13": 464.0,
+            "2025-09-14": 464.0,
+            "2025-09-15": 464.0,
+            "2025-09-16": 464.0,
+            "2025-09-17": 464.0,
+            "2025-09-18": 464.0,
+            "2025-09-19": 464.0,
+            "2025-09-20": 3264.0,
+            "2025-09-21": 3264.0,
+            "2025-09-22": 3264.0,
+            "2025-09-23": 3264.0,
+            "2025-09-24": 3264.0,
+            "2025-09-25": 464.0,
+            "2025-09-26": 464.0,
+            "2025-09-27": 464.0,
+            "2025-09-28": 464.0,
+            "2025-09-29": 464.0,
+            "2025-09-30": 464.0,
+            "2025-10-01": 464.0,
+            "2025-10-02": 464.0,
+            "2025-10-03": 464.0,
+            "2025-10-04": 464.0,
+            "2025-10-05": 464.0,
+            "2025-10-06": 464.0,
+            "2025-10-07": 464.0,
+            "2025-10-08": 464.0,
+            "2025-10-09": 464.0,
+            "2025-10-10": 464.0,
+            "2025-10-11": 464.0,
+            "2025-10-12": 464.0,
+            "2025-10-13": 464.0,
+            "2025-10-14": 464.0,
+            "2025-10-15": 464.0,
+            "2025-10-16": 464.0,
+            "2025-10-17": 464.0,
+            "2025-10-18": 464.0,
+            "2025-10-19": 464.0,
+            "2025-10-20": 464.0,
+            "2025-10-21": 464.0,
+            "2025-10-22": 464.0,
+            "2025-10-23": 464.0,
+            "2025-10-24": 464.0,
+            "2025-10-25": 464.0
+        },
+        "critical_points": [],
+        "production_efficiency": {
+            "average_batch_size": 2800.0,
+            "production_line_utilization": 0.7,
+            "production_gaps": [
+                {
+                    "from_batch": 1,
+                    "to_batch": 2,
+                    "gap_days": -19,
+                    "gap_type": "normal"
+                }
+            ],
+            "lead_time_compliance": 100,
+            "batch_efficiency": 100.0,
+            "critical_deliveries": 0,
+            "average_safety_margin": 5.0
+        },
+        "demand_analysis": {
+            "total_demand": 5600.0,
+            "average_daily_demand": 19.72,
+            "demand_by_month": {
+                "2025-08": 2800.0,
+                "2025-09": 2800.0
+            },
+            "period_days": 284,
+            "demand_events": 2,
+            "average_demand_per_event": 2800.0,
+            "first_demand_date": "2025-08-05",
+            "last_demand_date": "2025-09-25",
+            "demand_distribution": {
+                "2025-08-05": 2800.0,
+                "2025-09-25": 2800.0
+            }
+        },
+        "sporadic_demand_metrics": {
+            "demand_concentration": {
+                "concentration_index": 0.007,
+                "concentration_level": "low",
+                "days_with_demand": 2,
+                "total_period_days": 284
+            },
+            "interval_statistics": {
+                "average_interval_days": 51.0,
+                "min_interval_days": 51,
+                "max_interval_days": 51,
+                "interval_variance": 0.0
+            },
+            "demand_predictability": "high",
+            "peak_demand_analysis": {
+                "peak_count": 0,
+                "peak_threshold": 4200.0,
+                "peak_dates": [],
+                "average_peak_size": 0
+            }
+        },
+        "stock_end_of_period": {
+            "monthly": [
+                {
+                    "period": "2025-05",
+                    "end_date": "2025-05-31",
+                    "stock": 464.0,
+                    "days_of_coverage": 23.5
+                },
+                {
+                    "period": "2025-06",
+                    "end_date": "2025-06-30",
+                    "stock": 464.0,
+                    "days_of_coverage": 23.5
+                },
+                {
+                    "period": "2025-07",
+                    "end_date": "2025-07-31",
+                    "stock": 3264.0,
+                    "days_of_coverage": 165.5
+                },
+                {
+                    "period": "2025-08",
+                    "end_date": "2025-08-31",
+                    "stock": 464.0,
+                    "days_of_coverage": 23.5
+                },
+                {
+                    "period": "2025-09",
+                    "end_date": "2025-09-30",
+                    "stock": 464.0,
+                    "days_of_coverage": 23.5
+                },
+                {
+                    "period": "2025-10",
+                    "end_date": "2025-10-25",
+                    "stock": 464.0,
+                    "days_of_coverage": 23.5
+                }
+            ],
+            "after_batch_arrival": [
+                {
+                    "batch_number": 1,
+                    "date": "2025-07-31",
+                    "stock_before": 464.0,
+                    "batch_quantity": 2800.0,
+                    "stock_after": 3264.0,
+                    "coverage_gained": 1
+                },
+                {
+                    "batch_number": 2,
+                    "date": "2025-09-20",
+                    "stock_before": 464.0,
+                    "batch_quantity": 2800.0,
+                    "stock_after": 3264.0,
+                    "coverage_gained": 1
+                }
+            ],
+            "before_batch_arrival": [
+                {
+                    "before_batch": 2,
+                    "date": "2025-09-19",
+                    "stock": 464.0,
+                    "days_until_arrival": 1
+                }
+            ]
+        }
+    }
+}

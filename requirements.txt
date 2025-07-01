@@ -14,8 +14,11 @@ python-dateutil>=2.8.0
 # Para logs estruturados (opcional)
 structlog>=23.0.0
 
-# Para monitoramento (opcional)
+# Para monitorização (opcional)
 psutil>=5.9.0
+
+# Supply Chain Analytics
+supplychainpy>=0.0.6
 
 # Dependências específicas do projeto
 # (adicione aqui dependências específicas do seu modelo de ML)

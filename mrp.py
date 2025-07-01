@@ -6,6 +6,13 @@ from scipy import stats
 from dataclasses import dataclass
 import json
 
+# Tentar importar supplychainpy, mas não falhar se não estiver disponível
+try:
+    from supplychainpy import model_demand, model_inventory, eoq, demand
+    SUPPLYCHAINPY_AVAILABLE = True
+except ImportError:
+    SUPPLYCHAINPY_AVAILABLE = False
+
 
 def clean_for_json(obj):
     """
@@ -1861,22 +1868,70 @@ class MRPOptimizer:
         absolute_minimum_stock: float,
         max_gap_days: int
     ) -> List[BatchResult]:
-        """Algoritmo otimizado para planejar lotes esporádicos com agrupamento inteligente"""
+        """
+        Algoritmo REFATORADO para planejar lotes esporádicos com algoritmos avançados de supply chain
         
-        # Verificar se consolidação está habilitada
-        if hasattr(self.params, 'enable_consolidation') and self.params.enable_consolidation:
-            return self._plan_sporadic_batches_with_intelligent_grouping(
-                valid_demands, initial_stock, leadtime_days, start_period, end_period,
-                start_cutoff, end_cutoff, safety_days, safety_margin_percent, 
-                absolute_minimum_stock, max_gap_days
+        Usa a nova classe AdvancedSporadicMRPPlanner quando disponível,
+        mantendo fallback para algoritmos originais.
+        """
+        
+        # Tentar usar planejador avançado
+        try:
+            from advanced_sporadic_mrp import AdvancedSporadicMRPPlanner
+            
+            # Criar instância do planejador avançado
+            advanced_planner = AdvancedSporadicMRPPlanner(self.params)
+            
+            # Usar planejamento avançado
+            return advanced_planner.plan_sporadic_batches_advanced(
+                valid_demands=valid_demands,
+                initial_stock=initial_stock,
+                leadtime_days=leadtime_days,
+                start_period=start_period,
+                end_period=end_period,
+                start_cutoff=start_cutoff,
+                end_cutoff=end_cutoff,
+                safety_days=safety_days,
+                safety_margin_percent=safety_margin_percent,
+                absolute_minimum_stock=absolute_minimum_stock,
+                max_gap_days=max_gap_days
             )
-        else:
-            # Usar algoritmo original
-            return self._plan_sporadic_batches_original(
-                valid_demands, initial_stock, leadtime_days, start_period, end_period,
-                start_cutoff, end_cutoff, safety_days, safety_margin_percent, 
-                absolute_minimum_stock, max_gap_days
-            )
+            
+        except ImportError:
+            # Se planejador avançado não disponível, usar algoritmos originais
+            print("Advanced MRP Planner não disponível - usando algoritmos originais")
+            
+            # Verificar se consolidação está habilitada
+            if hasattr(self.params, 'enable_consolidation') and self.params.enable_consolidation:
+                return self._plan_sporadic_batches_with_intelligent_grouping(
+                    valid_demands, initial_stock, leadtime_days, start_period, end_period,
+                    start_cutoff, end_cutoff, safety_days, safety_margin_percent, 
+                    absolute_minimum_stock, max_gap_days
+                )
+            else:
+                # Usar algoritmo original
+                return self._plan_sporadic_batches_original(
+                    valid_demands, initial_stock, leadtime_days, start_period, end_period,
+                    start_cutoff, end_cutoff, safety_days, safety_margin_percent, 
+                    absolute_minimum_stock, max_gap_days
+                )
+        
+        except Exception as e:
+            # Em caso de erro no planejador avançado, usar fallback
+            print(f"Erro no Advanced MRP Planner: {e} - usando algoritmos originais")
+            
+            if hasattr(self.params, 'enable_consolidation') and self.params.enable_consolidation:
+                return self._plan_sporadic_batches_with_intelligent_grouping(
+                    valid_demands, initial_stock, leadtime_days, start_period, end_period,
+                    start_cutoff, end_cutoff, safety_days, safety_margin_percent, 
+                    absolute_minimum_stock, max_gap_days
+                )
+            else:
+                return self._plan_sporadic_batches_original(
+                    valid_demands, initial_stock, leadtime_days, start_period, end_period,
+                    start_cutoff, end_cutoff, safety_days, safety_margin_percent, 
+                    absolute_minimum_stock, max_gap_days
+                )
 
     def _plan_sporadic_batches_with_intelligent_grouping(
         self,
@@ -2443,10 +2498,27 @@ class MRPOptimizer:
         start_period: pd.Timestamp,
         end_period: pd.Timestamp
     ) -> Dict[str, float]:
-        """Calcula evolução detalhada do estoque para demandas esporádicas"""
+        """
+        Calcula evolução detalhada do estoque para demandas esporádicas
+        🎯 OTIMIZADO: Começar a partir do primeiro pedido para reduzir tamanho do gráfico
+        """
         stock_evolution = {}
+        
+        # 🔥 OTIMIZAÇÃO: Começar a partir do primeiro pedido, terminar pouco após última demanda
+        if batches and valid_demands:
+            # Encontrar a data do primeiro pedido (order_date mais antigo)
+            first_order_date = min(pd.to_datetime(batch.order_date) for batch in batches)
+            # Começar alguns dias antes do primeiro pedido para dar contexto
+            current_date = max(start_period, first_order_date - timedelta(days=5))
+            
+            # Terminar pouco após a última demanda
+            last_demand_date = max(pd.to_datetime(date) for date in valid_demands.keys())
+            end_period = min(end_period, last_demand_date + timedelta(days=30))
+        else:
+            # Se não há batches, usar período mínimo
+            current_date = start_period
+        
         current_stock = initial_stock
-        current_date = start_period
         
         # Criar mapa de chegadas
         arrivals = {}
@@ -2456,7 +2528,7 @@ class MRPOptimizer:
                 arrivals[arrival_date] = 0
             arrivals[arrival_date] += batch.quantity
         
-        # Simular dia a dia
+        # Simular dia a dia (período otimizado)
         while current_date <= end_period:
             date_str = current_date.strftime('%Y-%m-%d')
             
@@ -3265,7 +3337,10 @@ class MRPOptimizer:
         leadtime_days: int,
         safety_days: int
     ) -> Dict[str, float]:
-        """Simula evolução do estoque para detectar gaps perigosos em demandas esporádicas"""
+        """
+        Simula evolução do estoque para detectar gaps perigosos em demandas esporádicas
+        🎯 OTIMIZADO: Período reduzido para gráficos menores
+        """
         
         # Criar cronograma de chegadas baseado nos grupos
         arrivals = []
@@ -3277,9 +3352,19 @@ class MRPOptimizer:
                 'quantity': group['total_demand'] * 1.2  # Estimativa conservadora
             })
         
-        # Simular estoque dia a dia
-        start_date = min(pd.to_datetime(date) for date in valid_demands.keys()) - pd.Timedelta(days=leadtime_days)
-        end_date = max(pd.to_datetime(date) for date in valid_demands.keys()) + pd.Timedelta(days=30)
+        # 🔥 OTIMIZAÇÃO: Período reduzido começando próximo das primeiras demandas
+        if valid_demands and demand_groups:
+            # Começar a partir do primeiro pedido (estimado)
+            first_demand_date = min(pd.to_datetime(date) for date in valid_demands.keys())
+            first_order_estimate = first_demand_date - pd.Timedelta(days=leadtime_days + safety_days)
+            
+            # Período otimizado: alguns dias antes do primeiro pedido até após última demanda
+            start_date = first_order_estimate - pd.Timedelta(days=5)
+            end_date = max(pd.to_datetime(date) for date in valid_demands.keys()) + pd.Timedelta(days=15)
+        else:
+            # Fallback para caso não há demandas
+            start_date = pd.Timestamp.now() 
+            end_date = start_date + pd.Timedelta(days=30)
         
         stock_evolution = {}
         current_stock = initial_stock
