@@ -1277,8 +1277,9 @@ class MRPOptimizer:
         current_order_date = first_order_date
         current_stock_projection = initial_stock
         
-        # 🎯 CORREÇÃO DO BUG: Para exact_quantity_match, calcular as quantidades considerando gaps inevitáveis
-        if getattr(self, '_exact_quantity_match', False):
+        # 🎯 NOVA LÓGICA: Aplicar distribuição inteligente para TODOS os casos de lead time longo (≥45 dias)
+        # Isso melhora a distribuição mesmo quando exact_quantity_match=false
+        if leadtime_days >= 45:
             # Para produção sequencial, simular gaps e dimensionar lotes adequadamente
             quantities = []
             
@@ -1442,14 +1443,20 @@ class MRPOptimizer:
                 quantities = [base_quantity] * num_batches
                 print("⚠️  Usando distribuição uniforme como fallback")
             
-            # 🚨 CORREÇÃO CRÍTICA: Para exact_quantity_match, JAMAIS aplicar compensações extras
-            # O total deve ser EXATAMENTE a quantidade necessária, sem exceções
+            # 🎯 CORREÇÃO: Normalização baseada no tipo de estratégia
             total_calc = sum(quantities)
             
-            # Normalizar para produzir EXATAMENTE a quantidade necessária
-            if total_calc != quantity_needed:
-                quantities = [(q / total_calc) * quantity_needed for q in quantities]
-                print(f"⚖️  EXACT QUANTITY: normalizando {total_calc:.0f} → {quantity_needed:.0f} (precisão exata)")
+            if getattr(self, '_exact_quantity_match', False):
+                # Para exact_quantity_match: normalizar para quantidade exata
+                if total_calc != quantity_needed:
+                    quantities = [(q / total_calc) * quantity_needed for q in quantities]
+                    print(f"⚖️  EXACT QUANTITY: normalizando {total_calc:.0f} → {quantity_needed:.0f} (precisão exata)")
+            else:
+                # Para casos com safety stock: permitir total ligeiramente maior para safety
+                quantity_target = total_demand + safety_margin - initial_stock
+                if total_calc != quantity_target:
+                    quantities = [(q / total_calc) * quantity_target for q in quantities]
+                    print(f"⚖️  SAFETY STOCK: normalizando {total_calc:.0f} → {quantity_target:.0f} (com margem de segurança)")
             
             print(f"📋 Quantidades finais: {[f'{q:.0f}' for q in quantities]}")
         
@@ -1466,11 +1473,12 @@ class MRPOptimizer:
             if arrival_date > end_cutoff:
                 break
             
-            # 🎯 CORREÇÃO DO BUG: Determinar quantidade correta para este lote
-            if getattr(self, '_exact_quantity_match', False):
+            # 🎯 NOVA LÓGICA: Usar distribuição inteligente para lead times longos
+            if leadtime_days >= 45:
+                # Para lead times longos, usar sempre as quantidades da distribuição inteligente
                 current_batch_quantity = quantities[i]
             else:
-                # Comportamento original
+                # Para lead times menores, comportamento original
                 current_batch_quantity = quantity_per_batch
                 
                 # Ajustar quantidade do último lote se necessário
