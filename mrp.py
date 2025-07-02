@@ -1278,11 +1278,23 @@ class MRPOptimizer:
         current_stock_projection = initial_stock
         
         # 🎯 CORRIGIDO: MRP verdadeiro - só aplicar distribuições especiais quando há necessidade real
-        # Primeiro: verificar se há risco de stockout com distribuição uniforme padrão
-        needs_special_distribution = self._analyze_stockout_risk_with_uniform_distribution(
-            demand_df, initial_stock, leadtime_days, demand_stats, first_order_date, 
-            end_cutoff, num_batches, quantity_needed, safety_margin
-        )
+        # 🚨 CORREÇÃO CRÍTICA: Para exact_quantity_match, ainda verificar stockout mas com critério rigoroso
+        if getattr(self, '_exact_quantity_match', False):
+            # Com exact_quantity_match, verificar stockout com critério mais rigoroso (só stockout real)
+            needs_special_distribution = self._analyze_stockout_risk_with_uniform_distribution(
+                demand_df, initial_stock, leadtime_days, demand_stats, first_order_date, 
+                end_cutoff, num_batches, quantity_needed, safety_margin
+            )
+            if needs_special_distribution:
+                print(f"🚨 EXACT_QUANTITY_MATCH: stockout detectado - aplicando distribuição mínima necessária")
+            else:
+                print(f"🎯 EXACT_QUANTITY_MATCH: sem risco de stockout - distribuição uniforme segura")
+        else:
+            # Comportamento padrão: verificar se há risco real de stockout
+            needs_special_distribution = self._analyze_stockout_risk_with_uniform_distribution(
+                demand_df, initial_stock, leadtime_days, demand_stats, first_order_date, 
+                end_cutoff, num_batches, quantity_needed, safety_margin
+            )
         
         if needs_special_distribution and leadtime_days >= 45:
             print(f"🎯 Aplicando DISTRIBUIÇÃO ESPECIAL para resolver stockout/estoque crítico")
@@ -1340,22 +1352,67 @@ class MRPOptimizer:
                     
                 elif distribution_type == 'smart_balanced':
                     # 🎯 NOVA ESTRATÉGIA: Balanceamento inteligente baseado na evolução de estoque simulada
+                    print(f"🔧 Executando estratégia smart_balanced...")
                     base_quantity = quantity_needed / num_batches
                     test_quantities = []
                     
-                    # Simular evolução de estoque para calcular necessidades reais de cada lote
-                    simulated_stock = initial_stock
-                    total_remaining_demand = quantity_needed
-                    
-                    for i in range(num_batches):
-                        if i == 0:
-                            # Primeiro lote: deve cobrir o stockout inicial MAIS garantir estoque para o gap
-                            consumption_until_arrival = (arrival_dates_sim[i] - demand_df.index[0]).days * demand_stats['mean']
-                            stockout_deficit = max(0, consumption_until_arrival - simulated_stock)
+                    # 🚨 CORREÇÃO CRÍTICA: Para exact_quantity_match, aplicar distribuição anti-stockout conservadora
+                    if getattr(self, '_exact_quantity_match', False):
+                        # Com exact_quantity: distribuição conservadora que evita stockout mas mantém balanceamento
+                        print(f"🎯 EXACT_QUANTITY: distribuição anti-stockout conservadora")
+                        
+                        # Simular estoque para cada lote e calcular necessidade real
+                        simulated_stock = initial_stock
+                        total_remaining_demand = quantity_needed
+                        
+                        for i in range(num_batches):
+                            if i == 0:
+                                # Primeiro lote: calcular baseado no que será necessário até o próximo lote
+                                # Consumo até chegada deste lote
+                                first_arrival_days = leadtime_days + 1 
+                                consumption_until_arrival = first_arrival_days * demand_stats['mean']
+                                stockout_prevention = max(0, consumption_until_arrival - simulated_stock)
+                                
+                                # Consumo até próximo lote (gap sequencial)
+                                gap_days = leadtime_days + 1  # Aproximação do gap sequencial
+                                gap_coverage = gap_days * demand_stats['mean'] * 1.05  # 5% extra
+                                lote_quantity = stockout_prevention + gap_coverage
+                                
+                            else:
+                                # Lotes subsequentes: distribuir o restante de forma proporcional
+                                remaining_batches = num_batches - i
+                                remaining_quantity = total_remaining_demand
+                                
+                                if i == num_batches - 1:
+                                    # Último lote: exatamente o que resta para completar quantity_needed
+                                    lote_quantity = max(0, remaining_quantity)
+                                else:
+                                    # Lotes intermediários: distribuir uniformemente o restante
+                                    lote_quantity = remaining_quantity / remaining_batches
+                                
+                            test_quantities.append(max(1.0, lote_quantity))
                             
-                            # Calcular consumo no gap até próximo lote
-                            if i < len(gap_consumptions):
-                                gap_consumption = gap_consumptions[i]
+                            # Atualizar demanda restante para próxima iteração
+                            total_remaining_demand -= lote_quantity
+                            simulated_stock += lote_quantity
+                        
+                        print(f"📊 Distribuição anti-stockout: {[f'{q:.0f}' for q in test_quantities]}")
+                        print(f"   Total gerado: {sum(test_quantities):.0f} vs necessário: {quantity_needed:.0f}")
+                    else:
+                        # Lógica original para casos sem exact_quantity ou sem estoque inicial
+                        # Simular evolução de estoque para calcular necessidades reais de cada lote
+                        simulated_stock = initial_stock
+                        total_remaining_demand = quantity_needed
+                        
+                        for i in range(num_batches):
+                            if i == 0:
+                                # Primeiro lote: deve cobrir consumo inicial + gap até próximo lote
+                                consumption_until_arrival = leadtime_days * demand_stats['mean']
+                                stockout_deficit = max(0, consumption_until_arrival - simulated_stock)
+                                
+                                # Calcular consumo no gap até próximo lote (aproximação sequencial)
+                                gap_consumption = (leadtime_days + 1) * demand_stats['mean']  # Gap sequencial aproximado
+                                
                                 # 🚨 CORREÇÃO CRÍTICA: Para exact_quantity_match, NÃO aplicar safety buffers
                                 if getattr(self, '_exact_quantity_match', False):
                                     # Para exact_quantity, sem safety buffer - apenas o necessário
@@ -1364,40 +1421,30 @@ class MRPOptimizer:
                                     # Comportamento normal com safety buffer
                                     safety_buffer = gap_consumption * 0.2  # 20% extra de segurança
                                     lote_quantity = stockout_deficit + gap_consumption + safety_buffer
-                            else:
-                                lote_quantity = stockout_deficit + base_quantity
-                            
-                        else:
-                            # Lotes subsequentes: calcular baseado no estoque projetado e gap real
-                            if i < len(gap_consumptions):
-                                current_gap = gap_consumptions[i]
                                 
-                                # Calcular quantos lotes restam
+                            else:
+                                # Lotes subsequentes: distribuir o restante uniformemente
                                 remaining_batches = num_batches - i
-                                remaining_demand_after_this = total_remaining_demand - current_gap
                                 
                                 if i == num_batches - 1:
-                                    # Último lote: pegar toda demanda restante (sem margem extra para exact_quantity)
-                                    if getattr(self, '_exact_quantity_match', False):
-                                        lote_quantity = remaining_demand_after_this / remaining_batches  # Sem margem extra
-                                    else:
-                                        lote_quantity = remaining_demand_after_this / remaining_batches * 1.1  # 10% extra
+                                    # Último lote: toda demanda restante
+                                    lote_quantity = total_remaining_demand
                                 else:
-                                    # Lotes intermediários: distribuir igualmente (sem margem extra para exact_quantity)
-                                    avg_remaining = remaining_demand_after_this / remaining_batches
-                                    if getattr(self, '_exact_quantity_match', False):
-                                        lote_quantity = max(current_gap, avg_remaining)  # Sem margem extra
-                                    else:
-                                        lote_quantity = max(current_gap, avg_remaining) * 1.05  # 5% extra
-                            else:
-                                lote_quantity = base_quantity
+                                    # Lotes intermediários: distribuir proporcionalmente
+                                    lote_quantity = total_remaining_demand / remaining_batches
+                                    
+                                    # Para exact_quantity_match, sem margem extra
+                                    if not getattr(self, '_exact_quantity_match', False):
+                                        lote_quantity *= 1.05  # 5% extra apenas se não for exact
+                            
+                            test_quantities.append(max(1.0, lote_quantity))
+                            
+                            # Atualizar demanda restante
+                            total_remaining_demand -= lote_quantity
+                            simulated_stock += lote_quantity
                         
-                        test_quantities.append(max(1.0, lote_quantity))
-                        
-                        # Atualizar demanda restante
-                        if i < len(gap_consumptions):
-                            total_remaining_demand -= gap_consumptions[i]
-                            simulated_stock += lote_quantity - gap_consumptions[i]
+                        print(f"🎯 SMART_BALANCED finalizada: {[f'{q:.0f}' for q in test_quantities]}")
+                        print(f"   Total: {sum(test_quantities):.0f}, Demanda restante: {total_remaining_demand:.0f}")
                 
                 # Normalizar para manter a quantidade total desejada
                 total_test = sum(test_quantities)
@@ -1408,12 +1455,25 @@ class MRPOptimizer:
                 stockout_severity = 0
                 sim_stock = initial_stock
                 
+                # Calcular datas de chegada dos lotes para simulação
+                current_sim_order_date = first_order_date
+                arrival_dates_simulation = []
+                
+                for j in range(num_batches):
+                    if j > 0:
+                        # Produção sequencial: próximo pedido após chegada do anterior
+                        prev_arrival = arrival_dates_simulation[j-1]
+                        current_sim_order_date = prev_arrival + pd.Timedelta(days=1)
+                    
+                    arrival_date_sim = current_sim_order_date + pd.Timedelta(days=leadtime_days)
+                    arrival_dates_simulation.append(arrival_date_sim)
+                
                 for i in range(num_batches):
                     # Consumo até chegada do lote
                     if i == 0:
-                        consumption_days = (arrival_dates_sim[i] - demand_df.index[0]).days
+                        consumption_days = (arrival_dates_simulation[i] - demand_df.index[0]).days
                     else:
-                        consumption_days = (arrival_dates_sim[i] - arrival_dates_sim[i-1]).days
+                        consumption_days = (arrival_dates_simulation[i] - arrival_dates_simulation[i-1]).days
                     
                     consumption = consumption_days * demand_stats['mean']
                     sim_stock -= consumption
@@ -1425,19 +1485,45 @@ class MRPOptimizer:
                     sim_stock += test_quantities[i]
                 
                 # Verificar consumo até o final do período
-                if arrival_dates_sim:
-                    final_consumption_days = (end_cutoff - arrival_dates_sim[-1]).days
+                if arrival_dates_simulation:
+                    final_consumption_days = (end_cutoff - arrival_dates_simulation[-1]).days
                     final_consumption = final_consumption_days * demand_stats['mean']
                     sim_stock -= final_consumption
                     
                     if sim_stock < 0:
                         stockout_severity += abs(sim_stock)
                 
+                # Calcular balanceamento (ratio máx/mín) para casos de empate
+                if test_quantities and max(test_quantities) > 0 and min(test_quantities) > 0:
+                    balance_ratio = max(test_quantities) / min(test_quantities)
+                else:
+                    balance_ratio = float('inf')
+                
                 # Escolher a melhor distribuição
-                if stockout_severity < min_stockout_severity:
+                print(f"📊 Distribuição '{distribution_type}': severity = {stockout_severity:.0f}, balance = {balance_ratio:.2f}, quantities = {[f'{q:.0f}' for q in test_quantities]}")
+                
+                # Para exact_quantity_match, priorizar balanceamento em caso de empate em severity
+                is_better = False
+                if getattr(self, '_exact_quantity_match', False):
+                    # Para exact_quantity: em caso de empate em severity, preferir melhor balanceamento
+                    if stockout_severity < min_stockout_severity:
+                        is_better = True
+                    elif stockout_severity == min_stockout_severity == 0:
+                        # Em caso de empate em severity = 0, preferir melhor balanceamento
+                        current_best_ratio = float('inf')
+                        if best_distribution:
+                            current_best_ratio = max(best_distribution) / min(best_distribution) if min(best_distribution) > 0 else float('inf')
+                        if balance_ratio < current_best_ratio:
+                            is_better = True
+                            print(f"   🎯 EXACT_QUANTITY: preferindo melhor balanceamento {balance_ratio:.2f} vs {current_best_ratio:.2f}")
+                else:
+                    # Comportamento padrão: só severity
+                    is_better = stockout_severity < min_stockout_severity
+                
+                if is_better:
                     min_stockout_severity = stockout_severity
                     best_distribution = test_quantities.copy()
-                    print(f"📊 Distribuição '{distribution_type}': stockout severity = {stockout_severity:.0f}")
+                    print(f"   ✅ Nova melhor distribuição!")
             
             # Usar a melhor distribuição encontrada
             if best_distribution:
@@ -1583,8 +1669,13 @@ class MRPOptimizer:
                 # Usar a quantidade ajustada (agora garantidamente dentro dos limites)
                 current_batch_quantity = quantities[i] if i < len(quantities) else 0
                 
-                # Aplicar min_batch_size
-                current_batch_quantity = max(self.params.min_batch_size, current_batch_quantity)
+                # 🎯 CORREÇÃO CRÍTICA: Para exact_quantity_match, NÃO aplicar min_batch_size se isso violar a precisão
+                if getattr(self, '_exact_quantity_match', False):
+                    # Com exact_quantity_match, permitir lotes menores que min_batch_size para manter precisão
+                    print(f"🎯 EXACT_QUANTITY: mantendo lote {i+1} = {current_batch_quantity:.0f} (sem min_batch_size)")
+                else:
+                    # Aplicar min_batch_size apenas quando não há exact_quantity_match
+                    current_batch_quantity = max(self.params.min_batch_size, current_batch_quantity)
             else:
                 # Para lead times menores, comportamento original
                 current_batch_quantity = quantity_per_batch
@@ -2003,9 +2094,8 @@ class MRPOptimizer:
         # 1. Simular distribuição uniforme simples (comportamento padrão MRP)
         uniform_quantity_per_batch = (quantity_needed + safety_margin) / num_batches
         
-        # 2. Simular evolução de estoque com distribuição uniforme
+        # 2. Simular evolução de estoque com distribuição uniforme (simulação sequencial correta)
         current_stock_sim = initial_stock
-        current_order_date_sim = first_order_date
         stockout_detected = False
         min_stock_level = current_stock_sim
         
@@ -2013,11 +2103,14 @@ class MRPOptimizer:
         print(f"   Estoque inicial: {initial_stock:.0f}")
         print(f"   Lote uniforme: {uniform_quantity_per_batch:.0f} unidades")
         
+        # Calcular datas de chegada de todos os lotes (produção sequencial)
+        arrival_dates = []
+        current_order_date_sim = first_order_date
+        
         for i in range(num_batches):
-            # Calcular data de chegada do lote
             if i > 0:
-                # Produção sequencial
-                prev_arrival = current_order_date_sim + pd.Timedelta(days=leadtime_days)
+                # Produção sequencial: próximo pedido só após chegada do anterior
+                prev_arrival = arrival_dates[i-1]
                 current_order_date_sim = prev_arrival + pd.Timedelta(days=1)
             
             arrival_date = current_order_date_sim + pd.Timedelta(days=leadtime_days)
@@ -2025,23 +2118,29 @@ class MRPOptimizer:
             # Verificar se dentro do período válido
             if arrival_date > end_cutoff:
                 break
-            
+                
+            arrival_dates.append(arrival_date)
+        
+        # Simular consumo entre chegadas
+        for i, arrival_date in enumerate(arrival_dates):
             # Calcular consumo até chegada deste lote
             if i == 0:
-                # Primeiro lote: consumo desde início do período até chegada
-                days_until_arrival = (arrival_date - demand_df.index[0]).days
+                # Primeiro lote: consumo desde início do período
+                consumption_start = demand_df.index[0]
             else:
                 # Lotes subsequentes: consumo desde chegada do lote anterior
-                prev_arrival_date = current_order_date_sim  # Corrigir: usar arrival date do lote anterior
-                days_until_arrival = (arrival_date - (current_order_date_sim + pd.Timedelta(days=leadtime_days))).days
+                consumption_start = arrival_dates[i-1]
             
-            consumption = days_until_arrival * demand_stats['mean']
+            days_consumption = (arrival_date - consumption_start).days
+            consumption = days_consumption * demand_stats['mean']
             stock_before_arrival = current_stock_sim - consumption
             
             # DETECTAR STOCKOUT
             if stock_before_arrival < 0:
                 stockout_deficit = abs(stock_before_arrival)
                 print(f"   🚨 STOCKOUT detectado no lote {i+1}: déficit de {stockout_deficit:.0f} unidades")
+                print(f"      Período: {consumption_start.strftime('%Y-%m-%d')} → {arrival_date.strftime('%Y-%m-%d')} ({days_consumption} dias)")
+                print(f"      Consumo: {consumption:.0f}, Estoque disponível: {current_stock_sim:.0f}")
                 stockout_detected = True
                 break
             
@@ -2049,11 +2148,18 @@ class MRPOptimizer:
             current_stock_sim = stock_before_arrival + uniform_quantity_per_batch
             min_stock_level = min(min_stock_level, stock_before_arrival)
             
-            print(f"   Lote {i+1}: estoque antes={stock_before_arrival:.0f}, depois={current_stock_sim:.0f}")
+            print(f"   Lote {i+1}: chegada {arrival_date.strftime('%m-%d')}, estoque antes={stock_before_arrival:.0f}, depois={current_stock_sim:.0f}")
         
         # 3. Verificar margem de segurança  
         # 🎯 AJUSTE: Limiar crítico mais realista baseado no lead time
-        safety_threshold = demand_stats['mean'] * min(14, leadtime_days * 0.3)  # 30% do lead time ou 14 dias
+        # Para exact_quantity_match, ser mais conservador na detecção de risco crítico
+        if getattr(self, '_exact_quantity_match', False):
+            # Com exact_quantity, usar critério mais rigoroso (menor chance de aplicar distribuição especial)
+            safety_threshold = demand_stats['mean'] * min(7, leadtime_days * 0.15)  # 15% do lead time ou 7 dias
+        else:
+            # Comportamento padrão
+            safety_threshold = demand_stats['mean'] * min(14, leadtime_days * 0.3)  # 30% do lead time ou 14 dias
+        
         critical_stock_level = min_stock_level < safety_threshold
         
         print(f"   Menor nível de estoque: {min_stock_level:.0f}")
@@ -2225,10 +2331,17 @@ class MRPOptimizer:
             # Primeiro: adicionar chegadas do dia
             if date_str in arrivals:
                 current_stock += arrivals[date_str]
+                # Debug apenas para casos críticos
+                if current_stock < 100:
+                    print(f"📦 {date_str}: chegada +{arrivals[date_str]:.0f}, estoque = {current_stock:.0f}")
                 
             # Segundo: consumir demanda do dia
             daily_demand = demand_df.loc[date, 'demand']
             current_stock -= daily_demand
+            
+            # Debug para stockout ou estoque muito baixo
+            if current_stock < 0 or current_stock < 50:
+                print(f"⚠️  {date_str}: estoque = {current_stock:.0f} (consumo: {daily_demand:.1f})")
             
             # Registrar estoque ao final do dia
             stock_levels.append(current_stock)
