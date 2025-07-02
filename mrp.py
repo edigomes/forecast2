@@ -1277,9 +1277,15 @@ class MRPOptimizer:
         current_order_date = first_order_date
         current_stock_projection = initial_stock
         
-        # 🎯 NOVA LÓGICA: Aplicar distribuição inteligente para TODOS os casos de lead time longo (≥45 dias)
-        # Isso melhora a distribuição mesmo quando exact_quantity_match=false
-        if leadtime_days >= 45:
+        # 🎯 CORRIGIDO: MRP verdadeiro - só aplicar distribuições especiais quando há necessidade real
+        # Primeiro: verificar se há risco de stockout com distribuição uniforme padrão
+        needs_special_distribution = self._analyze_stockout_risk_with_uniform_distribution(
+            demand_df, initial_stock, leadtime_days, demand_stats, first_order_date, 
+            end_cutoff, num_batches, quantity_needed, safety_margin
+        )
+        
+        if needs_special_distribution and leadtime_days >= 45:
+            print(f"🎯 Aplicando DISTRIBUIÇÃO ESPECIAL para resolver stockout/estoque crítico")
             # Para produção sequencial, simular gaps e dimensionar lotes adequadamente
             quantities = []
             
@@ -1459,8 +1465,43 @@ class MRPOptimizer:
                     print(f"⚖️  SAFETY STOCK: normalizando {total_calc:.0f} → {quantity_target:.0f} (com margem de segurança)")
             
             print(f"📋 Quantidades finais: {[f'{q:.0f}' for q in quantities]}")
+        else:
+            # 🎯 MRP CLÁSSICO: Usar distribuição uniforme quando não há risco
+            print(f"📊 Aplicando DISTRIBUIÇÃO UNIFORME (MRP clássico) - sem risco de stockout")
+            quantities = []
+            uniform_quantity_per_batch = (quantity_needed + safety_margin) / num_batches
+            
+            for i in range(num_batches):
+                # Aplicar max_batch_size também na distribuição uniforme
+                max_batch_size = self._get_effective_max_batch_size(demand_stats['mean'] * 365)
+                
+                if uniform_quantity_per_batch > max_batch_size:
+                    # Se exceder max_batch_size, aumentar número de lotes
+                    total_needed = (quantity_needed + safety_margin)
+                    min_batches_needed = int(np.ceil(total_needed / max_batch_size))
+                    
+                    print(f"⚠️  Lote uniforme {uniform_quantity_per_batch:.0f} > max_batch_size {max_batch_size:.0f}")
+                    print(f"📊 Aumentando lotes de {num_batches} para {min_batches_needed}")
+                    
+                    # Recalcular com mais lotes
+                    num_batches = min_batches_needed
+                    uniform_quantity_per_batch = total_needed / num_batches
+                    quantities = [uniform_quantity_per_batch] * num_batches
+                    break
+                else:
+                    quantities.append(uniform_quantity_per_batch)
+            
+            print(f"📋 Distribuição uniforme: {[f'{q:.0f}' for q in quantities]}")
         
-        for i in range(num_batches):
+        # 🎯 ATUALIZAR: num_batches pode ter mudado devido ao max_batch_size
+        if leadtime_days >= 45 or len(quantities) != num_batches:
+            actual_num_batches = len(quantities)
+            # Atualizar também a variável num_batches para compatibilidade
+            num_batches = actual_num_batches
+        else:
+            actual_num_batches = num_batches
+        
+        for i in range(actual_num_batches):
             # Calcular quando fazer o pedido considerando produção sequencial
             if i > 0:
                 # Próximo pedido só pode ser feito após o anterior terminar
@@ -1473,10 +1514,77 @@ class MRPOptimizer:
             if arrival_date > end_cutoff:
                 break
             
-            # 🎯 NOVA LÓGICA: Usar distribuição inteligente para lead times longos
-            if leadtime_days >= 45:
-                # Para lead times longos, usar sempre as quantidades da distribuição inteligente
-                current_batch_quantity = quantities[i]
+            # 🎯 CORRIGIDA: Usar quantidades calculadas (especiais ou uniformes)
+            if leadtime_days >= 45 or quantities:
+                # Usar as quantidades pré-calculadas (distribuição especial ou uniforme)
+                current_batch_quantity = quantities[i] if i < len(quantities) else 0
+                
+                # 🚨 CORREÇÃO CRÍTICA: Aplicar max_batch_size também na distribuição inteligente
+                max_batch_size = self._get_effective_max_batch_size(demand_stats['mean'] * 365)
+                
+                # 🎯 NOVA LÓGICA: Verificar se TODA a distribuição precisa ser recalculada
+                if i == 0:  # Só fazer uma vez no primeiro lote
+                    # Verificar se algum lote excede max_batch_size
+                    needs_redistribution = any(q > max_batch_size for q in quantities)
+                    
+                    if needs_redistribution:
+                        print(f"⚠️  Distribuição viola max_batch_size={max_batch_size:.0f}, recalculando...")
+                        
+                        # Calcular quantos lotes são necessários para respeitar max_batch_size
+                        total_quantity_needed = sum(quantities)
+                        min_batches_for_max_size = int(np.ceil(total_quantity_needed / max_batch_size))
+                        
+                        # Se precise de mais lotes que o planejado, aumentar número de lotes
+                        if min_batches_for_max_size > num_batches:
+                            print(f"📊 Aumentando lotes de {num_batches} para {min_batches_for_max_size} para respeitar max_batch_size")
+                            
+                            # Redistribuir uniformemente respeitando max_batch_size
+                            new_quantities = []
+                            remaining_quantity = total_quantity_needed
+                            
+                            for j in range(min_batches_for_max_size):
+                                if j == min_batches_for_max_size - 1:
+                                    # Último lote: pegar tudo que sobra
+                                    lote_qty = remaining_quantity
+                                else:
+                                    # Outros lotes: usar max_batch_size ou proporção
+                                    batches_remaining = min_batches_for_max_size - j
+                                    avg_remaining = remaining_quantity / batches_remaining
+                                    lote_qty = min(max_batch_size, avg_remaining)
+                                
+                                new_quantities.append(lote_qty)
+                                remaining_quantity -= lote_qty
+                            
+                            # Substituir quantities e ajustar num_batches
+                            quantities = new_quantities
+                            num_batches = len(quantities)
+                            print(f"📋 Nova distribuição: {[f'{q:.0f}' for q in quantities]}")
+                        else:
+                            # Mesmo número de lotes, mas redistribuir respeitando limite
+                            new_quantities = []
+                            total_quantity_needed = sum(quantities)
+                            
+                            for j in range(num_batches):
+                                if j == num_batches - 1:
+                                    # Último lote: garantir que atinge a quantidade total exata
+                                    lote_qty = total_quantity_needed - sum(new_quantities)
+                                else:
+                                    # Outros lotes: distribuir uniformemente até max_batch_size
+                                    remaining_batches = num_batches - j
+                                    remaining_quantity = total_quantity_needed - sum(new_quantities)
+                                    avg_needed = remaining_quantity / remaining_batches
+                                    lote_qty = min(max_batch_size, avg_needed)
+                                
+                                new_quantities.append(lote_qty)
+                            
+                            quantities = new_quantities
+                            print(f"📋 Distribuição ajustada: {[f'{q:.0f}' for q in quantities]}")
+                
+                # Usar a quantidade ajustada (agora garantidamente dentro dos limites)
+                current_batch_quantity = quantities[i] if i < len(quantities) else 0
+                
+                # Aplicar min_batch_size
+                current_batch_quantity = max(self.params.min_batch_size, current_batch_quantity)
             else:
                 # Para lead times menores, comportamento original
                 current_batch_quantity = quantity_per_batch
@@ -1488,7 +1596,7 @@ class MRPOptimizer:
                         current_batch_quantity = max(self.params.min_batch_size, remaining_need)
             
             # 🎯 CORREÇÃO: Para exact_quantity_match, usar precisão maior no último lote
-            if getattr(self, '_exact_quantity_match', False) and i == num_batches - 1:
+            if getattr(self, '_exact_quantity_match', False) and i == actual_num_batches - 1:
                 final_quantity = current_batch_quantity  # Sem arredondamento no último lote
             else:
                 final_quantity = round(current_batch_quantity, 3)
@@ -1504,7 +1612,7 @@ class MRPOptimizer:
                     'actual_lead_time': leadtime_days,
                     'urgency_level': 'planned',
                     'batch_sequence': i + 1,
-                    'total_batches_planned': num_batches,
+                    'total_batches_planned': actual_num_batches,
                     'production_strategy': 'sequential_large_batches'
                 }
             )
@@ -1874,6 +1982,95 @@ class MRPOptimizer:
             
         mask = (demand_df.index >= start_dt) & (demand_df.index <= end_dt)
         return demand_df.loc[mask, 'demand'].sum()
+    
+    def _analyze_stockout_risk_with_uniform_distribution(
+        self,
+        demand_df: pd.DataFrame,
+        initial_stock: float,
+        leadtime_days: int,
+        demand_stats: Dict,
+        first_order_date: pd.Timestamp,
+        end_cutoff: pd.Timestamp,
+        num_batches: int,
+        quantity_needed: float,
+        safety_margin: float
+    ) -> bool:
+        """
+        🎯 MRP CLÁSSICO: Analisar se há risco real de stockout com distribuição uniforme
+        Retorna True apenas se realmente houver necessidade de distribuição especial
+        """
+        
+        # 1. Simular distribuição uniforme simples (comportamento padrão MRP)
+        uniform_quantity_per_batch = (quantity_needed + safety_margin) / num_batches
+        
+        # 2. Simular evolução de estoque com distribuição uniforme
+        current_stock_sim = initial_stock
+        current_order_date_sim = first_order_date
+        stockout_detected = False
+        min_stock_level = current_stock_sim
+        
+        print(f"🔍 Analisando risco de stockout com distribuição uniforme...")
+        print(f"   Estoque inicial: {initial_stock:.0f}")
+        print(f"   Lote uniforme: {uniform_quantity_per_batch:.0f} unidades")
+        
+        for i in range(num_batches):
+            # Calcular data de chegada do lote
+            if i > 0:
+                # Produção sequencial
+                prev_arrival = current_order_date_sim + pd.Timedelta(days=leadtime_days)
+                current_order_date_sim = prev_arrival + pd.Timedelta(days=1)
+            
+            arrival_date = current_order_date_sim + pd.Timedelta(days=leadtime_days)
+            
+            # Verificar se dentro do período válido
+            if arrival_date > end_cutoff:
+                break
+            
+            # Calcular consumo até chegada deste lote
+            if i == 0:
+                # Primeiro lote: consumo desde início do período até chegada
+                days_until_arrival = (arrival_date - demand_df.index[0]).days
+            else:
+                # Lotes subsequentes: consumo desde chegada do lote anterior
+                prev_arrival_date = current_order_date_sim  # Corrigir: usar arrival date do lote anterior
+                days_until_arrival = (arrival_date - (current_order_date_sim + pd.Timedelta(days=leadtime_days))).days
+            
+            consumption = days_until_arrival * demand_stats['mean']
+            stock_before_arrival = current_stock_sim - consumption
+            
+            # DETECTAR STOCKOUT
+            if stock_before_arrival < 0:
+                stockout_deficit = abs(stock_before_arrival)
+                print(f"   🚨 STOCKOUT detectado no lote {i+1}: déficit de {stockout_deficit:.0f} unidades")
+                stockout_detected = True
+                break
+            
+            # Atualizar estoque após chegada do lote
+            current_stock_sim = stock_before_arrival + uniform_quantity_per_batch
+            min_stock_level = min(min_stock_level, stock_before_arrival)
+            
+            print(f"   Lote {i+1}: estoque antes={stock_before_arrival:.0f}, depois={current_stock_sim:.0f}")
+        
+        # 3. Verificar margem de segurança  
+        # 🎯 AJUSTE: Limiar crítico mais realista baseado no lead time
+        safety_threshold = demand_stats['mean'] * min(14, leadtime_days * 0.3)  # 30% do lead time ou 14 dias
+        critical_stock_level = min_stock_level < safety_threshold
+        
+        print(f"   Menor nível de estoque: {min_stock_level:.0f}")
+        print(f"   Limiar crítico ({min(14, leadtime_days * 0.3):.0f} dias): {safety_threshold:.0f}")
+        
+        # 4. Decidir se precisa de distribuição especial
+        needs_special = stockout_detected or critical_stock_level
+        
+        if needs_special:
+            if stockout_detected:
+                print(f"   ✅ DISTRIBUIÇÃO ESPECIAL necessária: stockout detectado")
+            else:
+                print(f"   ✅ DISTRIBUIÇÃO ESPECIAL necessária: estoque crítico")
+        else:
+            print(f"   ✅ DISTRIBUIÇÃO UNIFORME adequada: sem risco de stockout")
+        
+        return needs_special
     
     def _expand_demand_data_for_simulation(
         self,
