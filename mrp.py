@@ -94,6 +94,9 @@ class OptimizationParams:
     overlap_prevention_priority: bool = True  # Priorizar prevenção de overlap de lead time
     # NOVO PARÂMETRO para controlar lead times longos
     max_batches_long_leadtime: int = 3  # Máximo de lotes para lead times longos (>14 dias)
+    # 🎯 NOVO: Auto-calculation do max_batch_size
+    auto_calculate_max_batch_size: bool = False  # Se True, calcula automaticamente baseado na demanda
+    max_batch_multiplier: float = 4.0  # Multiplicador do EOQ para auto-calculation (2.0-6.0)
 
 
 class MRPOptimizer:
@@ -115,6 +118,8 @@ class MRPOptimizer:
         start_cutoff_date: str,
         end_cutoff_date: str,
         include_extended_analytics: bool = False,  # Novo parâmetro
+        ignore_safety_stock: bool = False,  # 🎯 NOVO: Ignorar completamente estoque de segurança
+        exact_quantity_match: bool = False,  # 🎯 NOVO: Produzir exatamente a demanda sem arredondamentos
         **kwargs
     ) -> Dict:
         """
@@ -129,6 +134,8 @@ class MRPOptimizer:
             start_cutoff_date: Data de corte inicial
             end_cutoff_date: Data de corte final
             include_extended_analytics: Se True, inclui analytics avançados
+            ignore_safety_stock: Se True, ignora completamente estoque de segurança
+            exact_quantity_match: Se True, produz exatamente a demanda sem arredondamentos
             **kwargs: Parâmetros adicionais que sobrescrevem os padrões
             
         Returns:
@@ -136,6 +143,10 @@ class MRPOptimizer:
         """
         # Atualizar parâmetros com kwargs
         self._update_params(kwargs)
+        
+        # 🎯 ARMAZENAR flags para usar nas estratégias
+        self._ignore_safety_stock = ignore_safety_stock
+        self._exact_quantity_match = exact_quantity_match
         
         # Converter datas
         start_period = pd.to_datetime(period_start_date)
@@ -704,10 +715,43 @@ class MRPOptimizer:
         max_reasonable_eoq = annual_demand / 365 * 60  # 60 dias de demanda
         eoq = min(eoq, max_reasonable_eoq)
         
+        # 🎯 NOVO: Auto-calculation do max_batch_size baseado no EOQ
+        if self.params.auto_calculate_max_batch_size:
+            # Calcular max_batch_size automaticamente baseado no EOQ
+            auto_max_batch = eoq * self.params.max_batch_multiplier
+            # Garantir que não seja menor que o mínimo já definido
+            auto_max_batch = max(auto_max_batch, self.params.min_batch_size * 2)
+            # Usar o menor entre o auto-calculado e o configurado manualmente
+            effective_max_batch = min(auto_max_batch, self.params.max_batch_size)
+        else:
+            # Usar valor configurado normalmente
+            effective_max_batch = self.params.max_batch_size
+        
         # Aplicar limites configurados
-        eoq = max(self.params.min_batch_size, min(self.params.max_batch_size, eoq))
+        eoq = max(self.params.min_batch_size, min(effective_max_batch, eoq))
         
         return eoq
+    
+    def _get_effective_max_batch_size(self, annual_demand: float = None) -> float:
+        """🎯 NOVO: Calcula max_batch_size efetivo (manual ou auto-calculado)"""
+        if not self.params.auto_calculate_max_batch_size:
+            return self.params.max_batch_size
+        
+        if annual_demand and annual_demand > 0:
+            # Calcular EOQ teórico para auto-calculation
+            unit_value = 100  # Valor unitário estimado
+            holding_cost_per_unit = unit_value * self.params.holding_cost_rate
+            theoretical_eoq = np.sqrt(2 * annual_demand * self.params.setup_cost / holding_cost_per_unit)
+            
+            # Auto-calculation baseado no EOQ teórico
+            auto_max_batch = theoretical_eoq * self.params.max_batch_multiplier
+            auto_max_batch = max(auto_max_batch, self.params.min_batch_size * 2)
+            
+            # Retornar menor entre auto-calculado e limite manual
+            return min(auto_max_batch, self.params.max_batch_size)
+        else:
+            # Fallback se não há demanda: usar limite manual
+            return self.params.max_batch_size
     
     def _calculate_safety_stock(
         self, 
@@ -716,6 +760,10 @@ class MRPOptimizer:
         service_level: float = None
     ) -> float:
         """Calcula estoque de segurança baseado no nível de serviço"""
+        # 🎯 NOVO: Se flag ignore_safety_stock estiver ativa, retornar zero
+        if getattr(self, '_ignore_safety_stock', False):
+            return 0.0
+            
         if service_level is None:
             service_level = self.params.service_level
             
@@ -775,7 +823,11 @@ class MRPOptimizer:
                     consumption_since_last = initial_stock - current_stock
                 
                 # Precisamos pedir
-                quantity = period_demand - current_stock + (demand_stats['mean'] * self.params.safety_days)
+                # 🎯 NOVO: Margem de segurança baseada no flag ignore_safety_stock
+                if getattr(self, '_ignore_safety_stock', False):
+                    quantity = period_demand - current_stock  # Sem margem de segurança
+                else:
+                    quantity = period_demand - current_stock + (demand_stats['mean'] * self.params.safety_days)
                 quantity = max(self.params.min_batch_size, quantity)
                 
                 if current_date >= start_cutoff:
@@ -875,7 +927,10 @@ class MRPOptimizer:
                 target_stock = safety_stock + (demand_stats['mean'] * coverage_days)
                 
                 quantity = max(0, target_stock - current_stock)
-                quantity = max(self.params.min_batch_size, min(self.params.max_batch_size, quantity))
+                # 🎯 NOVO: Usar max_batch_size efetivo (manual ou auto-calculado)
+                annual_demand = demand_stats['mean'] * 365
+                effective_max_batch = self._get_effective_max_batch_size(annual_demand)
+                quantity = max(self.params.min_batch_size, min(effective_max_batch, quantity))
                 
                 # Ajustar para múltiplos sensatos se necessário
                 if quantity > demand_stats['mean'] * 45:  # Mais que 45 dias
@@ -963,7 +1018,10 @@ class MRPOptimizer:
             if current_stock <= s and not any(d <= date + timedelta(days=leadtime_days) for d, _ in pending_orders):
                 # Fazer pedido
                 quantity = S - current_stock
-                quantity = max(self.params.min_batch_size, min(self.params.max_batch_size, quantity))
+                # 🎯 NOVO: Usar max_batch_size efetivo (manual ou auto-calculado)
+                annual_demand = demand_stats['mean'] * 365
+                effective_max_batch = self._get_effective_max_batch_size(annual_demand)
+                quantity = max(self.params.min_batch_size, min(effective_max_batch, quantity))
                 
                 order_date = date
                 arrival_date = date + timedelta(days=leadtime_days)
@@ -1007,8 +1065,12 @@ class MRPOptimizer:
         total_demand = demand_df['demand'].sum()
         period_days = (demand_df.index[-1] - demand_df.index[0]).days + 1
         
-        # Se o estoque inicial já cobre toda a demanda + margem, não precisa produzir
-        safety_margin = demand_stats['mean'] * leadtime_days * 0.5  # 50% do consumo do lead time
+        # 🎯 NOVO: Margem de segurança baseada no flag ignore_safety_stock
+        if getattr(self, '_ignore_safety_stock', False):
+            safety_margin = 0.0  # Ignorar completamente margem de segurança
+        else:
+            safety_margin = demand_stats['mean'] * leadtime_days * 0.5  # 50% do consumo do lead time
+            
         if initial_stock >= total_demand + safety_margin:
             return batches
         
@@ -1026,25 +1088,66 @@ class MRPOptimizer:
             first_arrival_date = first_order_date + pd.Timedelta(days=leadtime_days)
         
         # Calcular quantos lotes são necessários (configurável via max_batches_long_leadtime)
-        max_batch_size = self.params.max_batch_size
-        quantity_needed = total_demand + safety_margin - initial_stock
+        # 🎯 NOVO: Usar max_batch_size efetivo (manual ou auto-calculado)
+        annual_demand = demand_stats['mean'] * 365
+        max_batch_size = self._get_effective_max_batch_size(annual_demand)
+        
+        # 🎯 NOVO: Se exact_quantity_match for True, produzir exatamente a demanda total
+        if getattr(self, '_exact_quantity_match', False):
+            quantity_needed = total_demand  # Ignorar estoque inicial - produzir exata demanda
+        else:
+            quantity_needed = total_demand + safety_margin - initial_stock  # Comportamento original
         
         if quantity_needed <= 0:
             return batches
             
-        # Número de lotes baseado no tamanho máximo e lead time
-        # Agora controlado pelo parâmetro max_batches_long_leadtime
-        max_batches_allowed = getattr(self.params, 'max_batches_long_leadtime', 3)
-        num_batches = min(max_batches_allowed, max(1, int(np.ceil(quantity_needed / max_batch_size))))
-        quantity_per_batch = quantity_needed / num_batches
-        
-        # Ajustar para múltiplos do lote mínimo
-        quantity_per_batch = max(self.params.min_batch_size, 
-                               np.ceil(quantity_per_batch / self.params.min_batch_size) * self.params.min_batch_size)
+        # 🎯 CORREÇÃO DO BUG: Para exact_quantity_match, priorizar produzir a quantidade exata
+        if getattr(self, '_exact_quantity_match', False):
+            # Calcular quantos lotes são possíveis dentro do período
+            # Com produção sequencial, cada lote precisa de leadtime_days + 1 dia de intervalo
+            days_available = (end_cutoff - first_order_date).days
+            max_sequential_batches = max(1, int(days_available / (leadtime_days + 1)))
+            
+            # Calcular número mínimo de lotes necessários baseado no max_batch_size
+            min_batches_needed = max(1, int(np.ceil(quantity_needed / max_batch_size)))
+            
+            # Escolher o menor entre o que é possível e o que é necessário
+            num_batches = min(max_sequential_batches, min_batches_needed)
+            
+            # Se não conseguimos fazer todos os lotes necessários dentro do prazo,
+            # aumentar o tamanho de cada lote para compensar
+            base_quantity_per_batch = quantity_needed / num_batches
+            quantity_per_batch = max(1.0, base_quantity_per_batch)
+            
+        else:
+            # Comportamento original para casos não-exact
+            max_batches_allowed = getattr(self.params, 'max_batches_long_leadtime', 3)
+            num_batches = min(max_batches_allowed, max(1, int(np.ceil(quantity_needed / max_batch_size))))
+            quantity_per_batch = quantity_needed / num_batches
+            
+            # Ajustar para múltiplos do lote mínimo (comportamento original)
+            quantity_per_batch = max(self.params.min_batch_size, 
+                                   np.ceil(quantity_per_batch / self.params.min_batch_size) * self.params.min_batch_size)
         
         # Criar os lotes com espaçamento adequado
         current_order_date = first_order_date
         current_stock_projection = initial_stock
+        
+        # 🎯 CORREÇÃO DO BUG: Para exact_quantity_match, calcular as quantidades exatas de cada lote
+        if getattr(self, '_exact_quantity_match', False):
+            # Distribuir a quantidade total de forma que a soma seja exata
+            quantities = []
+            base_qty = quantity_needed / num_batches
+            
+            for i in range(num_batches):
+                if i == num_batches - 1:
+                    # Último lote: calcular exatamente o que falta para completar quantity_needed
+                    total_previous = sum(quantities)
+                    final_qty = quantity_needed - total_previous
+                    quantities.append(final_qty)
+                else:
+                    # Lotes anteriores: usar quantidade base
+                    quantities.append(base_qty)
         
         for i in range(num_batches):
             # Calcular quando fazer o pedido considerando produção sequencial
@@ -1059,20 +1162,33 @@ class MRPOptimizer:
             if arrival_date > end_cutoff:
                 break
             
-            # Ajustar quantidade do último lote se necessário
-            if i == num_batches - 1:
-                remaining_need = max(0, total_demand + safety_margin - current_stock_projection - (quantity_per_batch * i))
-                if remaining_need > 0:
-                    quantity_per_batch = max(self.params.min_batch_size, remaining_need)
+            # 🎯 CORREÇÃO DO BUG: Determinar quantidade correta para este lote
+            if getattr(self, '_exact_quantity_match', False):
+                current_batch_quantity = quantities[i]
+            else:
+                # Comportamento original
+                current_batch_quantity = quantity_per_batch
+                
+                # Ajustar quantidade do último lote se necessário
+                if i == num_batches - 1:
+                    remaining_need = max(0, total_demand + safety_margin - current_stock_projection - (quantity_per_batch * i))
+                    if remaining_need > 0:
+                        current_batch_quantity = max(self.params.min_batch_size, remaining_need)
+            
+            # 🎯 CORREÇÃO: Para exact_quantity_match, usar precisão maior no último lote
+            if getattr(self, '_exact_quantity_match', False) and i == num_batches - 1:
+                final_quantity = current_batch_quantity  # Sem arredondamento no último lote
+            else:
+                final_quantity = round(current_batch_quantity, 3)
             
             batch = BatchResult(
                 order_date=current_order_date.strftime('%Y-%m-%d'),
                 arrival_date=arrival_date.strftime('%Y-%m-%d'),
-                quantity=round(quantity_per_batch, 3),
+                quantity=final_quantity,
                 analytics={
                     'stock_before_arrival': round(current_stock_projection, 2),
-                    'stock_after_arrival': round(current_stock_projection + quantity_per_batch, 2),
-                    'coverage_days': round(quantity_per_batch / demand_stats['mean']) if demand_stats['mean'] > 0 else 0,
+                    'stock_after_arrival': round(current_stock_projection + current_batch_quantity, 2),
+                    'coverage_days': round(current_batch_quantity / demand_stats['mean']) if demand_stats['mean'] > 0 else 0,
                     'actual_lead_time': leadtime_days,
                     'urgency_level': 'planned',
                     'batch_sequence': i + 1,
@@ -1081,7 +1197,7 @@ class MRPOptimizer:
                 }
             )
             batches.append(batch)
-            current_stock_projection += quantity_per_batch
+            current_stock_projection += current_batch_quantity
         
         return batches
     
@@ -1241,13 +1357,25 @@ class MRPOptimizer:
         updated_batches = []
         current_stock = initial_stock
         
-        # Simular evolução para capturar estados reais
+        # 🎯 CORREÇÃO: Considerar lotes que chegaram antes do período de simulação
+        simulation_start = demand_df.index[0]
+        
+        # Adicionar ao estoque inicial os lotes que chegaram antes da simulação começar
+        for batch in batches:
+            arrival_date = pd.to_datetime(batch.arrival_date)
+            if arrival_date < simulation_start:
+                current_stock += batch.quantity
+        
+        # Simular evolução para capturar estados reais (apenas lotes dentro do período)
         arrivals = {}
         for batch in batches:
-            if batch.arrival_date in arrivals:
-                arrivals[batch.arrival_date] += batch.quantity
-            else:
-                arrivals[batch.arrival_date] = batch.quantity
+            arrival_date = batch.arrival_date
+            arrival_dt = pd.to_datetime(arrival_date)
+            if arrival_dt >= simulation_start:  # Só considerar lotes dentro do período
+                if arrival_date in arrivals:
+                    arrivals[arrival_date] += batch.quantity
+                else:
+                    arrivals[arrival_date] = batch.quantity
         
         # Mapear estoque por data
         stock_by_date = {}
@@ -1285,6 +1413,34 @@ class MRPOptimizer:
             stock_before = stock_data.get('before_arrivals', 0)
             stock_after = stock_data.get('after_arrivals', 0)
             
+            # 🎯 NOVO: Campos simplificados de estoque inicial e final
+            # Conceito: cada lote tem um período onde ele é "responsável" por atender a demanda
+            
+            # 🎯 CORREÇÃO DO BUG: Estoque inicial do primeiro lote deve ser o valor original
+            arrival_dt = pd.to_datetime(batch.arrival_date)
+            
+            if i == 0:
+                # 🎯 PRIMEIRO LOTE: Sempre usar o initial_stock original
+                estoque_inicial_lote = initial_stock
+            elif arrival_dt < simulation_start:
+                # Lote chegou antes do período: estoque inicial é o ajustado
+                estoque_inicial_lote = initial_stock  # Estoque original sem este lote
+            else:
+                # Lotes subsequentes: usar estoque antes da chegada
+                estoque_inicial_lote = stock_before
+            
+            # Calcular estoque final (quando próximo lote chega ou fim do período)
+            if i == len(batches) - 1:
+                # Último lote: estoque no final de tudo
+                estoque_final_lote = stock_by_date.get(demand_df.index[-1].strftime('%Y-%m-%d'), {}).get('end_of_day', 0)
+            else:
+                # Outros lotes: estoque quando próximo lote chega
+                proximo_lote = batches[i + 1]
+                estoque_final_lote = stock_by_date.get(proximo_lote.arrival_date, {}).get('before_arrivals', 0)
+            
+            # CONSUMO DO LOTE: quanto foi consumido desde chegada até próximo lote
+            consumo_do_lote = estoque_inicial_lote + batch.quantity - estoque_final_lote
+            
             # Calcular consumo desde última chegada
             if last_arrival_date and last_arrival_date in stock_by_date:
                 consumption_since_last = self._calculate_consumption_between_dates(
@@ -1300,7 +1456,11 @@ class MRPOptimizer:
                 'stock_after_arrival': round(stock_after, 2),
                 'consumption_since_last_arrival': round(consumption_since_last, 2),
                 'coverage_days': round(batch.quantity / demand_df['demand'].mean()) if demand_df['demand'].mean() > 0 else 0,
-                'urgency_level': 'critical' if stock_before < 0 else 'high' if stock_before < 50 else 'normal'
+                'urgency_level': 'critical' if stock_before < 0 else 'high' if stock_before < 50 else 'normal',
+                # 🎯 NOVOS CAMPOS: Estoque inicial e final do lote
+                'estoque_inicial': round(estoque_inicial_lote, 2),
+                'estoque_final': round(estoque_final_lote, 2),
+                'consumo_lote': round(consumo_do_lote, 2)
             })
             
             # Criar novo lote com analytics atualizados
@@ -1331,6 +1491,36 @@ class MRPOptimizer:
         mask = (demand_df.index >= start_dt) & (demand_df.index <= end_dt)
         return demand_df.loc[mask, 'demand'].sum()
     
+    def _expand_demand_data_for_simulation(
+        self,
+        batches: List[BatchResult],
+        original_demand_df: pd.DataFrame
+    ) -> pd.DataFrame:
+        """Expande período de simulação desde primeiro order_date"""
+        if not batches:
+            return original_demand_df
+            
+        # Encontrar primeiro order_date
+        first_order_date = min(pd.to_datetime(batch.order_date) for batch in batches)
+        original_start = original_demand_df.index[0]
+        original_end = original_demand_df.index[-1]
+        
+        # Se primeiro pedido é depois do período original, não precisa expandir
+        if first_order_date >= original_start:
+            return original_demand_df
+            
+        # Criar DataFrame expandido desde primeiro order_date
+        expanded_range = pd.date_range(start=first_order_date, end=original_end, freq='D')
+        expanded_df = pd.DataFrame(index=expanded_range, columns=['demand'])
+        expanded_df['demand'] = 0.0  # Zero demanda antes do período original
+        
+        # Copiar demandas do período original
+        for date in original_demand_df.index:
+            if date in expanded_df.index:
+                expanded_df.loc[date, 'demand'] = original_demand_df.loc[date, 'demand']
+                
+        return expanded_df
+    
     def _calculate_analytics(
         self,
         batches: List[BatchResult],
@@ -1342,20 +1532,23 @@ class MRPOptimizer:
         total_produced = sum(b.quantity for b in batches)
         total_demand = demand_df['demand'].sum()
         
-        # Simular evolução do estoque com dicionário de datas
+        # 🎯 CORREÇÃO: Expandir período de simulação desde primeiro order_date
+        expanded_demand_df = self._expand_demand_data_for_simulation(batches, demand_df)
+        
+        # Simular evolução do estoque com período expandido
         stock_evolution_list = self._simulate_stock_evolution(
-            batches, demand_df, initial_stock
+            batches, expanded_demand_df, initial_stock
         )
         
         # Converter para dicionário com formato de data string
         stock_evolution = {}
-        for i, date in enumerate(demand_df.index):
+        for i, date in enumerate(expanded_demand_df.index):
             stock_evolution[date.strftime('%Y-%m-%d')] = round(stock_evolution_list[i], 2)
         
         # Encontrar mínimo e sua data
         min_stock = min(stock_evolution_list)
         min_stock_idx = stock_evolution_list.index(min_stock)
-        min_stock_date = demand_df.index[min_stock_idx].strftime('%Y-%m-%d')
+        min_stock_date = expanded_demand_df.index[min_stock_idx].strftime('%Y-%m-%d')
         
         # Calcular stock_consumed (diferença entre inicial e final + produção - demanda)
         stock_consumed = initial_stock - stock_evolution_list[-1] + total_produced - total_demand
@@ -1425,14 +1618,25 @@ class MRPOptimizer:
         stock_levels = []
         current_stock = initial_stock
         
-        # Criar dicionário de chegadas
+        # 🎯 CORREÇÃO: Considerar lotes que chegaram antes do período de simulação
+        simulation_start = demand_df.index[0]
+        
+        # Adicionar ao estoque inicial os lotes que chegaram antes da simulação começar
+        for batch in batches:
+            arrival_date = pd.to_datetime(batch.arrival_date)
+            if arrival_date < simulation_start:
+                current_stock += batch.quantity
+        
+        # Criar dicionário de chegadas (apenas para lotes dentro do período)
         arrivals = {}
         for batch in batches:
             arrival_date = batch.arrival_date
-            if arrival_date in arrivals:
-                arrivals[arrival_date] += batch.quantity
-            else:
-                arrivals[arrival_date] = batch.quantity
+            arrival_dt = pd.to_datetime(arrival_date)
+            if arrival_dt >= simulation_start:  # Só considerar lotes dentro do período
+                if arrival_date in arrivals:
+                    arrivals[arrival_date] += batch.quantity
+                else:
+                    arrivals[arrival_date] = batch.quantity
         
         for date in demand_df.index:
             date_str = date.strftime('%Y-%m-%d')
@@ -1674,6 +1878,7 @@ class MRPOptimizer:
         safety_days: int = 2,
         minimum_stock_percent: float = 0.0,
         max_gap_days: int = 999,
+        ignore_safety_stock: bool = False,  # 🎯 NOVO: Ignorar completamente estoque de segurança
         **kwargs
     ) -> Dict:
         """
@@ -1692,12 +1897,22 @@ class MRPOptimizer:
             safety_days: Dias de segurança padrão
             minimum_stock_percent: % da maior demanda como estoque mínimo
             max_gap_days: Gap máximo entre lotes (999 = sem limite)
+            ignore_safety_stock: Se True, ignora completamente estoque de segurança
             
         Returns:
             Dict com 'batches' e 'analytics' compatível com formato PHP
         """
         # Atualizar parâmetros com kwargs
         self._update_params(kwargs)
+        
+        # 🎯 ARMAZENAR flag para usar nas estratégias
+        self._ignore_safety_stock = ignore_safety_stock
+        
+        # 🎯 NOVO: Se ignore_safety_stock for True, zerar parâmetros de segurança
+        if ignore_safety_stock:
+            safety_margin_percent = 0.0
+            safety_days = 0
+            minimum_stock_percent = 0.0
         
         # Converter datas para pandas Timestamp
         start_period = pd.to_datetime(period_start_date)

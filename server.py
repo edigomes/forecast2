@@ -690,6 +690,8 @@ def mrp_optimize():
     - daily_production_capacity: Capacidade diária de produção (padrão: infinito)
     - enable_eoq_optimization: Habilitar otimização EOQ (padrão: True)
     - enable_consolidation: Habilitar consolidação de pedidos (padrão: True)
+    - ignore_safety_stock: Ignorar completamente estoque de segurança (padrão: False)
+    - exact_quantity_match: Produzir exatamente a demanda sem arredondamentos (padrão: False)
     """
     try:
         data = request.get_json(force=True) or {}
@@ -707,6 +709,8 @@ def mrp_optimize():
         logger.info(f"period_end_date: {data.get('period_end_date', 'não informado')}")
         logger.info(f"start_cutoff_date: {data.get('start_cutoff_date', 'não informado')}")
         logger.info(f"end_cutoff_date: {data.get('end_cutoff_date', 'não informado')}")
+        logger.info(f"ignore_safety_stock: {data.get('ignore_safety_stock', 'não informado')}")
+        logger.info(f"exact_quantity_match: {data.get('exact_quantity_match', 'não informado')}")
         
         # Validações dos parâmetros obrigatórios
         required_fields = [
@@ -770,7 +774,11 @@ def mrp_optimize():
             'service_level', 'min_batch_size', 'max_batch_size',
             'review_period_days', 'safety_days', 'consolidation_window_days',
             'daily_production_capacity', 'enable_eoq_optimization', 'enable_consolidation',
-            'include_extended_analytics'
+            'include_extended_analytics',
+            'ignore_safety_stock',  # 🎯 NOVO: Ignorar completamente estoque de segurança
+            'exact_quantity_match',  # 🎯 NOVO: Produzir exatamente a demanda sem arredondamentos
+            'auto_calculate_max_batch_size',  # 🎯 NOVO: Auto-calculation do max_batch_size
+            'max_batch_multiplier'  # 🎯 NOVO: Multiplicador do EOQ para auto-calculation
         ]
         
         for param in optional_params:
@@ -980,7 +988,9 @@ def mrp_sporadic():
             'setup_cost', 'holding_cost_rate', 'stockout_cost_multiplier',
             'service_level', 'min_batch_size', 'max_batch_size',
             'review_period_days', 'consolidation_window_days',
-            'daily_production_capacity', 'enable_eoq_optimization', 'enable_consolidation'
+            'daily_production_capacity', 'enable_eoq_optimization', 'enable_consolidation',
+            'auto_calculate_max_batch_size',  # 🎯 NOVO: Auto-calculation do max_batch_size
+            'max_batch_multiplier'  # 🎯 NOVO: Multiplicador do EOQ para auto-calculation
         ]
         
         for param in optional_params:
@@ -1256,6 +1266,14 @@ def mrp_advanced():
         if 'overlap_prevention_priority' in data:
             optimization_params.overlap_prevention_priority = bool(data['overlap_prevention_priority'])
         
+        # 🎯 NOVOS: Parâmetros de auto-calculation
+        if 'auto_calculate_max_batch_size' in data:
+            optimization_params.auto_calculate_max_batch_size = bool(data['auto_calculate_max_batch_size'])
+        if 'max_batch_multiplier' in data:
+            optimization_params.max_batch_multiplier = float(data['max_batch_multiplier'])
+            if optimization_params.max_batch_multiplier < 1.0 or optimization_params.max_batch_multiplier > 10.0:
+                return jsonify({"error": "max_batch_multiplier deve estar entre 1.0 e 10.0"}), 400
+        
         # Parâmetro para habilitar analytics estendidos (padrão: True para endpoint avançado)
         include_extended_analytics = data.get('include_extended_analytics', True)
         
@@ -1268,6 +1286,8 @@ def mrp_advanced():
         logger.info(f"  enable_consolidation: {optimization_params.enable_consolidation}")
         logger.info(f"  force_consolidation_within_leadtime: {optimization_params.force_consolidation_within_leadtime}")
         logger.info(f"  min_consolidation_benefit: {optimization_params.min_consolidation_benefit}")
+        logger.info(f"  🎯 auto_calculate_max_batch_size: {optimization_params.auto_calculate_max_batch_size}")
+        logger.info(f"  🎯 max_batch_multiplier: {optimization_params.max_batch_multiplier}")
         logger.info(f"  include_extended_analytics: {include_extended_analytics}")
         
         # Análise prévia das demandas
