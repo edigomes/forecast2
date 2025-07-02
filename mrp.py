@@ -1161,10 +1161,11 @@ class MRPOptimizer:
                 num_batches, uniform_quantity_per_batch, end_cutoff
             )
             
-            # 🚨 PASSO 3: CALCULAR COMPENSAÇÃO baseada na simulação
+            # 🚨 PASSO 3: CALCULAR COMPENSAÇÃO baseada na simulação (apenas para distribuição)
             stockout_compensation = 0
             if stockout_detected['has_stockout']:
-                # Calcular déficit de stockout para compensar
+                # Calcular déficit de stockout APENAS para ajustar distribuição entre lotes
+                # Mas NÃO para aumentar quantidade total no modo exact
                 stockout_deficit = self._calculate_stockout_deficit(
                     demand_df, initial_stock, leadtime_days, 
                     first_order_date, first_arrival_date, 
@@ -1172,11 +1173,12 @@ class MRPOptimizer:
                 )
                 stockout_compensation = abs(stockout_deficit) if stockout_deficit < 0 else stockout_deficit
                 
-            # ✅ PASSO 4: Definir quantity_needed final com compensação
-            quantity_needed = base_quantity_needed + stockout_compensation
+            # ✅ PASSO 4: Definir quantity_needed final SEM compensação (modo exact)
+            # 🎯 CORREÇÃO CRÍTICA: Para exact_quantity_match, nunca adicionar compensação
+            quantity_needed = base_quantity_needed  # SEM compensação extra
             print(f"🎯 MODO EXATO: Demanda total={total_demand:.0f}, Estoque inicial={initial_stock:.0f}")
             print(f"🎯 Base necessário={base_quantity_needed:.0f}, Compensação stockout={stockout_compensation:.0f}")
-            print(f"🎯 TOTAL A PRODUZIR={quantity_needed:.0f} (será ajustado para estoque final = 0)")
+            print(f"🎯 TOTAL A PRODUZIR={quantity_needed:.0f} (EXATO - sem compensação extra)")
             
         else:
             # 🎯 CORREÇÃO CRÍTICA: Para casos não-exact, usar comportamento original
