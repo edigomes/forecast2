@@ -1,0 +1,1075 @@
+{
+  "batches": [
+    {
+      "order_date": "2025-05-01",
+      "arrival_date": "2025-06-20",
+      "quantity": 5873.394,
+      "analytics": {
+        "stock_before_arrival": 0,
+        "stock_after_arrival": 0,
+        "coverage_days": 79,
+        "actual_lead_time": 50,
+        "urgency_level": "high",
+        "batch_sequence": 1,
+        "total_batches_planned": 3,
+        "production_strategy": "sequential_large_batches",
+        "consumption_since_last_arrival": 0,
+        "estoque_inicial": 0,
+        "estoque_final": 2306.03,
+        "consumo_lote": 3567.36,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-06-29",
+      "arrival_date": "2025-08-18",
+      "quantity": 500,
+      "analytics": {
+        "stock_before_arrival": 2306.03,
+        "stock_after_arrival": 2806.03,
+        "coverage_days": 7,
+        "actual_lead_time": 50,
+        "urgency_level": "normal",
+        "batch_sequence": 2,
+        "total_batches_planned": 3,
+        "production_strategy": "sequential_large_batches",
+        "consumption_since_last_arrival": -2306.03,
+        "estoque_inicial": 2306.03,
+        "estoque_final": -984.29,
+        "consumo_lote": 3790.32,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-08-19",
+      "arrival_date": "2025-10-08",
+      "quantity": 7301.485714,
+      "analytics": {
+        "stock_before_arrival": -984.29,
+        "stock_after_arrival": 6317.2,
+        "coverage_days": 98,
+        "actual_lead_time": 50,
+        "urgency_level": "critical",
+        "batch_sequence": 3,
+        "total_batches_planned": 3,
+        "production_strategy": "sequential_large_batches",
+        "consumption_since_last_arrival": 3790.32,
+        "estoque_inicial": -984.29,
+        "estoque_final": -0.0,
+        "consumo_lote": 6317.2,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    }
+  ],
+  "analytics": {
+    "summary": {
+      "initial_stock": 0,
+      "final_stock": -0.0,
+      "minimum_stock": -984.29,
+      "minimum_stock_date": "2025-10-07",
+      "stockout_occurred": true,
+      "total_batches": 3,
+      "total_produced": 13674.88,
+      "production_coverage_rate": "100%",
+      "stock_consumed": -0.0
+    },
+    "stock_evolution": {
+      "2025-05-01": 0.0,
+      "2025-05-02": 0.0,
+      "2025-05-03": 0.0,
+      "2025-05-04": 0.0,
+      "2025-05-05": 0.0,
+      "2025-05-06": 0.0,
+      "2025-05-07": 0.0,
+      "2025-05-08": 0.0,
+      "2025-05-09": 0.0,
+      "2025-05-10": 0.0,
+      "2025-05-11": 0.0,
+      "2025-05-12": 0.0,
+      "2025-05-13": 0.0,
+      "2025-05-14": 0.0,
+      "2025-05-15": 0.0,
+      "2025-05-16": 0.0,
+      "2025-05-17": 0.0,
+      "2025-05-18": 0.0,
+      "2025-05-19": 0.0,
+      "2025-05-20": 0.0,
+      "2025-05-21": 0.0,
+      "2025-05-22": 0.0,
+      "2025-05-23": 0.0,
+      "2025-05-24": 0.0,
+      "2025-05-25": 0.0,
+      "2025-05-26": 0.0,
+      "2025-05-27": 0.0,
+      "2025-05-28": 0.0,
+      "2025-05-29": 0.0,
+      "2025-05-30": 0.0,
+      "2025-05-31": 0.0,
+      "2025-06-01": 0.0,
+      "2025-06-02": 0.0,
+      "2025-06-03": 0.0,
+      "2025-06-04": 0.0,
+      "2025-06-05": 0.0,
+      "2025-06-06": 0.0,
+      "2025-06-07": 0.0,
+      "2025-06-08": 0.0,
+      "2025-06-09": 0.0,
+      "2025-06-10": 0.0,
+      "2025-06-11": 0.0,
+      "2025-06-12": 0.0,
+      "2025-06-13": 0.0,
+      "2025-06-14": 0.0,
+      "2025-06-15": 0.0,
+      "2025-06-16": 0.0,
+      "2025-06-17": 0.0,
+      "2025-06-18": 0.0,
+      "2025-06-19": 0.0,
+      "2025-06-20": 5873.39,
+      "2025-06-21": 5873.39,
+      "2025-06-22": 5873.39,
+      "2025-06-23": 5873.39,
+      "2025-06-24": 5873.39,
+      "2025-06-25": 5873.39,
+      "2025-06-26": 5873.39,
+      "2025-06-27": 5873.39,
+      "2025-06-28": 5873.39,
+      "2025-06-29": 5873.39,
+      "2025-06-30": 5873.39,
+      "2025-07-01": 5799.07,
+      "2025-07-02": 5724.75,
+      "2025-07-03": 5650.43,
+      "2025-07-04": 5576.11,
+      "2025-07-05": 5501.79,
+      "2025-07-06": 5427.47,
+      "2025-07-07": 5353.15,
+      "2025-07-08": 5278.83,
+      "2025-07-09": 5204.51,
+      "2025-07-10": 5130.19,
+      "2025-07-11": 5055.87,
+      "2025-07-12": 4981.55,
+      "2025-07-13": 4907.23,
+      "2025-07-14": 4832.91,
+      "2025-07-15": 4758.59,
+      "2025-07-16": 4684.27,
+      "2025-07-17": 4609.95,
+      "2025-07-18": 4535.63,
+      "2025-07-19": 4461.31,
+      "2025-07-20": 4386.99,
+      "2025-07-21": 4312.67,
+      "2025-07-22": 4238.35,
+      "2025-07-23": 4164.03,
+      "2025-07-24": 4089.71,
+      "2025-07-25": 4015.39,
+      "2025-07-26": 3941.07,
+      "2025-07-27": 3866.75,
+      "2025-07-28": 3792.43,
+      "2025-07-29": 3718.11,
+      "2025-07-30": 3643.79,
+      "2025-07-31": 3569.47,
+      "2025-08-01": 3495.15,
+      "2025-08-02": 3420.83,
+      "2025-08-03": 3346.51,
+      "2025-08-04": 3272.19,
+      "2025-08-05": 3197.87,
+      "2025-08-06": 3123.55,
+      "2025-08-07": 3049.23,
+      "2025-08-08": 2974.91,
+      "2025-08-09": 2900.59,
+      "2025-08-10": 2826.27,
+      "2025-08-11": 2751.95,
+      "2025-08-12": 2677.63,
+      "2025-08-13": 2603.31,
+      "2025-08-14": 2528.99,
+      "2025-08-15": 2454.67,
+      "2025-08-16": 2380.35,
+      "2025-08-17": 2306.03,
+      "2025-08-18": 2731.71,
+      "2025-08-19": 2657.39,
+      "2025-08-20": 2583.07,
+      "2025-08-21": 2508.75,
+      "2025-08-22": 2434.43,
+      "2025-08-23": 2360.11,
+      "2025-08-24": 2285.79,
+      "2025-08-25": 2211.47,
+      "2025-08-26": 2137.15,
+      "2025-08-27": 2062.83,
+      "2025-08-28": 1988.51,
+      "2025-08-29": 1914.19,
+      "2025-08-30": 1839.87,
+      "2025-08-31": 1765.55,
+      "2025-09-01": 1691.23,
+      "2025-09-02": 1616.91,
+      "2025-09-03": 1542.59,
+      "2025-09-04": 1468.27,
+      "2025-09-05": 1393.95,
+      "2025-09-06": 1319.63,
+      "2025-09-07": 1245.31,
+      "2025-09-08": 1170.99,
+      "2025-09-09": 1096.67,
+      "2025-09-10": 1022.35,
+      "2025-09-11": 948.03,
+      "2025-09-12": 873.71,
+      "2025-09-13": 799.39,
+      "2025-09-14": 725.07,
+      "2025-09-15": 650.75,
+      "2025-09-16": 576.43,
+      "2025-09-17": 502.11,
+      "2025-09-18": 427.79,
+      "2025-09-19": 353.47,
+      "2025-09-20": 279.15,
+      "2025-09-21": 204.83,
+      "2025-09-22": 130.51,
+      "2025-09-23": 56.19,
+      "2025-09-24": -18.13,
+      "2025-09-25": -92.45,
+      "2025-09-26": -166.77,
+      "2025-09-27": -241.09,
+      "2025-09-28": -315.41,
+      "2025-09-29": -389.73,
+      "2025-09-30": -464.05,
+      "2025-10-01": -538.37,
+      "2025-10-02": -612.69,
+      "2025-10-03": -687.01,
+      "2025-10-04": -761.33,
+      "2025-10-05": -835.65,
+      "2025-10-06": -909.97,
+      "2025-10-07": -984.29,
+      "2025-10-08": 6242.88,
+      "2025-10-09": 6168.56,
+      "2025-10-10": 6094.24,
+      "2025-10-11": 6019.92,
+      "2025-10-12": 5945.6,
+      "2025-10-13": 5871.28,
+      "2025-10-14": 5796.96,
+      "2025-10-15": 5722.64,
+      "2025-10-16": 5648.32,
+      "2025-10-17": 5574.0,
+      "2025-10-18": 5499.68,
+      "2025-10-19": 5425.36,
+      "2025-10-20": 5351.04,
+      "2025-10-21": 5276.72,
+      "2025-10-22": 5202.4,
+      "2025-10-23": 5128.08,
+      "2025-10-24": 5053.76,
+      "2025-10-25": 4979.44,
+      "2025-10-26": 4905.12,
+      "2025-10-27": 4830.8,
+      "2025-10-28": 4756.48,
+      "2025-10-29": 4682.16,
+      "2025-10-30": 4607.84,
+      "2025-10-31": 4533.52,
+      "2025-11-01": 4459.2,
+      "2025-11-02": 4384.88,
+      "2025-11-03": 4310.56,
+      "2025-11-04": 4236.24,
+      "2025-11-05": 4161.92,
+      "2025-11-06": 4087.6,
+      "2025-11-07": 4013.28,
+      "2025-11-08": 3938.96,
+      "2025-11-09": 3864.64,
+      "2025-11-10": 3790.32,
+      "2025-11-11": 3716.0,
+      "2025-11-12": 3641.68,
+      "2025-11-13": 3567.36,
+      "2025-11-14": 3493.04,
+      "2025-11-15": 3418.72,
+      "2025-11-16": 3344.4,
+      "2025-11-17": 3270.08,
+      "2025-11-18": 3195.76,
+      "2025-11-19": 3121.44,
+      "2025-11-20": 3047.12,
+      "2025-11-21": 2972.8,
+      "2025-11-22": 2898.48,
+      "2025-11-23": 2824.16,
+      "2025-11-24": 2749.84,
+      "2025-11-25": 2675.52,
+      "2025-11-26": 2601.2,
+      "2025-11-27": 2526.88,
+      "2025-11-28": 2452.56,
+      "2025-11-29": 2378.24,
+      "2025-11-30": 2303.92,
+      "2025-12-01": 2229.6,
+      "2025-12-02": 2155.28,
+      "2025-12-03": 2080.96,
+      "2025-12-04": 2006.64,
+      "2025-12-05": 1932.32,
+      "2025-12-06": 1858.0,
+      "2025-12-07": 1783.68,
+      "2025-12-08": 1709.36,
+      "2025-12-09": 1635.04,
+      "2025-12-10": 1560.72,
+      "2025-12-11": 1486.4,
+      "2025-12-12": 1412.08,
+      "2025-12-13": 1337.76,
+      "2025-12-14": 1263.44,
+      "2025-12-15": 1189.12,
+      "2025-12-16": 1114.8,
+      "2025-12-17": 1040.48,
+      "2025-12-18": 966.16,
+      "2025-12-19": 891.84,
+      "2025-12-20": 817.52,
+      "2025-12-21": 743.2,
+      "2025-12-22": 668.88,
+      "2025-12-23": 594.56,
+      "2025-12-24": 520.24,
+      "2025-12-25": 445.92,
+      "2025-12-26": 371.6,
+      "2025-12-27": 297.28,
+      "2025-12-28": 222.96,
+      "2025-12-29": 148.64,
+      "2025-12-30": 74.32,
+      "2025-12-31": -0.0
+    },
+    "critical_points": [
+      {
+        "date": "2025-05-01",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-02",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-03",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-04",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-05",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-06",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-07",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-08",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-09",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-10",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-11",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-12",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-13",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-14",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-15",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-16",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-17",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-18",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-19",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-20",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-21",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-22",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-23",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-24",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-25",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-26",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-27",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-28",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-29",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-30",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-05-31",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-01",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-02",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-03",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-04",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-05",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-06",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-07",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-08",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-09",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-10",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-11",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-12",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-13",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-14",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-15",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-16",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-17",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-18",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-06-19",
+        "stock": 0.0,
+        "days_of_coverage": 0.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-14",
+        "stock": 725.07,
+        "days_of_coverage": 9.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-15",
+        "stock": 650.75,
+        "days_of_coverage": 8.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-16",
+        "stock": 576.43,
+        "days_of_coverage": 7.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-17",
+        "stock": 502.11,
+        "days_of_coverage": 6.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-18",
+        "stock": 427.79,
+        "days_of_coverage": 5.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-19",
+        "stock": 353.47,
+        "days_of_coverage": 4.8,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-20",
+        "stock": 279.15,
+        "days_of_coverage": 3.8,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-21",
+        "stock": 204.83,
+        "days_of_coverage": 2.8,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-22",
+        "stock": 130.51,
+        "days_of_coverage": 1.8,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-23",
+        "stock": 56.19,
+        "days_of_coverage": 0.8,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-24",
+        "stock": -18.13,
+        "days_of_coverage": -0.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-09-25",
+        "stock": -92.45,
+        "days_of_coverage": -1.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-09-26",
+        "stock": -166.77,
+        "days_of_coverage": -2.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-09-27",
+        "stock": -241.09,
+        "days_of_coverage": -3.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-09-28",
+        "stock": -315.41,
+        "days_of_coverage": -4.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-09-29",
+        "stock": -389.73,
+        "days_of_coverage": -5.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-09-30",
+        "stock": -464.05,
+        "days_of_coverage": -6.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-10-01",
+        "stock": -538.37,
+        "days_of_coverage": -7.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-10-02",
+        "stock": -612.69,
+        "days_of_coverage": -8.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-10-03",
+        "stock": -687.01,
+        "days_of_coverage": -9.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-10-04",
+        "stock": -761.33,
+        "days_of_coverage": -10.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-10-05",
+        "stock": -835.65,
+        "days_of_coverage": -11.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-10-06",
+        "stock": -909.97,
+        "days_of_coverage": -12.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-10-07",
+        "stock": -984.29,
+        "days_of_coverage": -13.2,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-12-22",
+        "stock": 668.88,
+        "days_of_coverage": 9.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-23",
+        "stock": 594.56,
+        "days_of_coverage": 8.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-24",
+        "stock": 520.24,
+        "days_of_coverage": 7.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-25",
+        "stock": 445.92,
+        "days_of_coverage": 6.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-26",
+        "stock": 371.6,
+        "days_of_coverage": 5.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-27",
+        "stock": 297.28,
+        "days_of_coverage": 4.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-28",
+        "stock": 222.96,
+        "days_of_coverage": 3.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-29",
+        "stock": 148.64,
+        "days_of_coverage": 2.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-30",
+        "stock": 74.32,
+        "days_of_coverage": 1.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-31",
+        "stock": -0.0,
+        "days_of_coverage": -0.0,
+        "severity": "critical"
+      }
+    ],
+    "production_efficiency": {
+      "average_batch_size": 4558.29,
+      "production_line_utilization": 81.97,
+      "production_gaps": [
+        {
+          "from_batch": 1,
+          "to_batch": 2,
+          "gap_days": 9,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 2,
+          "to_batch": 3,
+          "gap_days": 1,
+          "gap_type": "idle"
+        }
+      ],
+      "lead_time_compliance": 100
+    },
+    "demand_analysis": {
+      "total_demand": 13674.88,
+      "average_daily_demand": 74.32,
+      "demand_by_month": {
+        "2025-07": 2303.92,
+        "2025-08": 2303.92,
+        "2025-09": 2229.6,
+        "2025-10": 2303.92,
+        "2025-11": 2229.6,
+        "2025-12": 2303.92
+      },
+      "period_days": 184
+    },
+    "stock_end_of_period": {
+      "monthly": [
+        {
+          "period": "2025-05",
+          "end_date": "2025-05-31",
+          "stock": 0.0,
+          "days_of_coverage": 0.0
+        },
+        {
+          "period": "2025-06",
+          "end_date": "2025-06-30",
+          "stock": 5873.39,
+          "days_of_coverage": 79.0
+        },
+        {
+          "period": "2025-07",
+          "end_date": "2025-07-31",
+          "stock": 3569.47,
+          "days_of_coverage": 48.0
+        },
+        {
+          "period": "2025-08",
+          "end_date": "2025-08-31",
+          "stock": 1765.55,
+          "days_of_coverage": 23.8
+        },
+        {
+          "period": "2025-09",
+          "end_date": "2025-09-30",
+          "stock": -464.05,
+          "days_of_coverage": -6.2
+        },
+        {
+          "period": "2025-10",
+          "end_date": "2025-10-31",
+          "stock": 4533.52,
+          "days_of_coverage": 61.0
+        },
+        {
+          "period": "2025-11",
+          "end_date": "2025-11-30",
+          "stock": 2303.92,
+          "days_of_coverage": 31.0
+        },
+        {
+          "period": "2025-12",
+          "end_date": "2025-12-31",
+          "stock": -0.0,
+          "days_of_coverage": -0.0
+        }
+      ],
+      "after_batch_arrival": [
+        {
+          "batch_number": 1,
+          "date": "2025-06-20",
+          "stock_before": 0,
+          "batch_quantity": 5873.394,
+          "stock_after": 5873.39,
+          "coverage_gained": 79
+        },
+        {
+          "batch_number": 2,
+          "date": "2025-08-18",
+          "stock_before": 2306.03,
+          "batch_quantity": 500,
+          "stock_after": 2731.71,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 3,
+          "date": "2025-10-08",
+          "stock_before": -984.29,
+          "batch_quantity": 7301.486,
+          "stock_after": 6242.88,
+          "coverage_gained": 98
+        }
+      ],
+      "before_batch_arrival": [
+        {
+          "before_batch": 2,
+          "date": "2025-08-17",
+          "stock": 2306.03,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 3,
+          "date": "2025-10-07",
+          "stock": -984.29,
+          "days_until_arrival": 1
+        }
+      ]
+    },
+    "order_dates": [
+      "2025-05-01",
+      "2025-06-29",
+      "2025-08-19"
+    ],
+    "extended_analytics": {
+      "performance_metrics": {
+        "realized_service_level": 91.85,
+        "inventory_turnover": 4.99,
+        "average_days_of_inventory": 36.9,
+        "setup_frequency": 3,
+        "average_batch_size": 4558.29,
+        "stock_variability_cv": 0.695,
+        "perfect_order_rate": 66.67
+      },
+      "cost_analysis": {
+        "total_cost": 1701338.6,
+        "setup_cost": 1500.0,
+        "holding_cost": 27638.6,
+        "stockout_cost": 1672200.0,
+        "cost_breakdown_percentage": {
+          "setup": 0.1,
+          "holding": 1.6,
+          "stockout": 98.3
+        }
+      },
+      "optimization_metrics": {
+        "theoretical_eoq": 1164.62,
+        "actual_average_batch": 4558.29,
+        "eoq_adherence_rate": -191.4,
+        "consolidation_savings": 0.0,
+        "optimal_review_period": 30,
+        "batches_vs_optimal": {
+          "actual_batches": 3,
+          "optimal_batches": 11.7,
+          "efficiency": 25.55
+        }
+      },
+      "risk_analysis": {
+        "stockout_risk": {
+          "probability": 8.15,
+          "expected_stockouts_per_year": 29.8,
+          "average_days_to_stockout": -2.6,
+          "severity": "high"
+        },
+        "inventory_risk": {
+          "var_95": -304.26,
+          "cvar_95": -649.85,
+          "min_stock_as_days": -13.2,
+          "volatility": 1904.3
+        },
+        "demand_uncertainty": {
+          "coefficient_of_variation": 0.0,
+          "predictability": "high",
+          "forecast_error_impact": 0.0
+        }
+      },
+      "seasonality_analysis": {
+        "seasonality_detected": false,
+        "weekly_pattern": {
+          "Segunda": 1.0,
+          "Terça": 1.0,
+          "Quarta": 1.0,
+          "Quinta": 1.0,
+          "Sexta": 1.0,
+          "Sábado": 1.0,
+          "Domingo": 1.0
+        },
+        "peak_day": "Segunda",
+        "low_day": "Segunda",
+        "trend": {
+          "direction": "decreasing",
+          "strength": 0.0,
+          "monthly_growth_rate": -0.0
+        }
+      },
+      "recommendations": [
+        {
+          "type": "service_level",
+          "priority": "high",
+          "message": "Alto risco de ruptura detectado. Considere aumentar o nível de serviço alvo.",
+          "action": "Aumentar service_level de 0.95 para 0.98",
+          "expected_impact": "Redução de 30-50% nas rupturas de estoque"
+        },
+        {
+          "type": "lead_time",
+          "priority": "high",
+          "message": "Lead time longo identificado. Isso aumenta a incerteza e necessidade de estoque.",
+          "action": "Negociar redução de lead time com fornecedor ou buscar alternativas locais",
+          "expected_impact": "Redução de 1115.0 unidades em estoque de segurança"
+        }
+      ],
+      "what_if_scenarios": {
+        "demand_increase_20%": {
+          "additional_stock_needed": 0.0,
+          "additional_orders_per_month": 2.2,
+          "cost_impact": 108507.2
+        },
+        "leadtime_reduction_50%": {
+          "safety_stock_reduction": 0.0,
+          "working_capital_freed": 0.0,
+          "flexibility_improvement": "Alta - resposta 50% mais rápida a mudanças de demanda"
+        },
+        "perfect_forecast": {
+          "safety_stock_elimination": 0.0,
+          "cost_savings": 0.0,
+          "feasibility": "Baixa - considere melhorias incrementais na previsão"
+        }
+      },
+      "optimization_parameters_used": {
+        "setup_cost": 500.0,
+        "holding_cost_rate": 0.2,
+        "service_level_target": 0.95,
+        "consolidation_enabled": true,
+        "eoq_optimization_enabled": true,
+        "strategy_used": "Long Lead Time MRP"
+      }
+    }
+  }
+}
