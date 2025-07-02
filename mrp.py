@@ -186,6 +186,9 @@ class MRPOptimizer:
         if self.params.enable_consolidation:
             batches = self._consolidate_batches(batches, leadtime_days)
         
+        # 🎯 NOVO: Correção automática de stockout nos primeiros lotes
+        batches = self._correct_early_stockout(batches, demand_df, initial_stock, leadtime_days)
+        
         # Atualizar analytics dos lotes com dados da simulação real
         batches = self._update_batch_analytics(batches, demand_df, initial_stock)
         
@@ -1065,12 +1068,8 @@ class MRPOptimizer:
         total_demand = demand_df['demand'].sum()
         period_days = (demand_df.index[-1] - demand_df.index[0]).days + 1
         
-        # 🎯 CORREÇÃO CRÍTICA: Verificar flags para comportamento exato
-        exact_mode = getattr(self, '_exact_quantity_match', False)
-        ignore_safety = getattr(self, '_ignore_safety_stock', False)
-        
         # 🎯 NOVO: Margem de segurança baseada no flag ignore_safety_stock
-        if ignore_safety:
+        if getattr(self, '_ignore_safety_stock', False):
             safety_margin = 0.0  # Ignorar completamente margem de segurança
         else:
             safety_margin = demand_stats['mean'] * leadtime_days * 0.5  # 50% do consumo do lead time
@@ -1078,322 +1077,278 @@ class MRPOptimizer:
         if initial_stock >= total_demand + safety_margin:
             return batches
         
-        # 🎯 CORREÇÃO CRÍTICA: Calcular quando o estoque vai acabar
-        if initial_stock > 0:
-            days_of_coverage = initial_stock / demand_stats['mean'] if demand_stats['mean'] > 0 else float('inf')
-            stockout_date = demand_df.index[0] + pd.Timedelta(days=int(days_of_coverage))
-            # Primeira produção deve chegar antes da ruptura
-            first_arrival_date = min(stockout_date - pd.Timedelta(days=5), demand_df.index[-1])  # 5 dias de buffer
-        else:
-            # 🎯 NOVO: Caso especial para initial_stock = 0 
-            # Primeira produção deve chegar ANTES da primeira demanda para evitar stockout
-            buffer_days = safety_days if not ignore_safety else 5  # Mínimo 5 dias de buffer
-            first_arrival_date = demand_df.index[0] - pd.Timedelta(days=buffer_days)
-            
-            # 🎯 CORREÇÃO ADICIONAL: Se mesmo assim o pedido seria antes do start_cutoff,
-            # ajustar para que chegue no próprio dia da primeira demanda (sem buffer)
-            potential_order_date = first_arrival_date - pd.Timedelta(days=leadtime_days)
-            if potential_order_date < start_cutoff:
-                # Usar toda a janela disponível: pedido no start_cutoff, chegada no máximo possível
-                max_arrival_with_cutoff = start_cutoff + pd.Timedelta(days=leadtime_days)
-                if max_arrival_with_cutoff <= demand_df.index[0]:
-                    # Consegue chegar antes ou no dia da primeira demanda
-                    first_arrival_date = max_arrival_with_cutoff
-                else:
-                    # Não consegue chegar a tempo - manter chegada no dia da primeira demanda
-                    first_arrival_date = demand_df.index[0]
+        # Calcular quando o estoque vai acabar
+        days_of_coverage = initial_stock / demand_stats['mean'] if demand_stats['mean'] > 0 else float('inf')
+        stockout_date = demand_df.index[0] + pd.Timedelta(days=int(days_of_coverage))
         
+        # Primeira produção deve chegar antes da ruptura
+        first_arrival_date = min(stockout_date - pd.Timedelta(days=5), demand_df.index[-1])  # 5 dias de buffer
         first_order_date = first_arrival_date - pd.Timedelta(days=leadtime_days)
         
         # Se o primeiro pedido já passou, fazer pedido urgente
         if first_order_date < start_cutoff:
             first_order_date = start_cutoff
             first_arrival_date = first_order_date + pd.Timedelta(days=leadtime_days)
-            
-            # 🎯 NOVO: Verificar se mesmo assim chega muito tarde e precisa de estratégia especial
-            first_demand_date = demand_df.index[0]
-            if first_arrival_date > first_demand_date:
-                days_late = (first_arrival_date - first_demand_date).days
-                print(f"⚠️ AVISO: Primeiro lote chegará {days_late} dias após início da demanda - aplicando compensação de quantidade")
-                
-                # 🎯 ESTRATÉGIA DE EMERGÊNCIA: Se atraso é muito grande (>14 dias), sugerir antecipação
-                if days_late > 14:
-                    ideal_start_cutoff = first_demand_date - pd.Timedelta(days=leadtime_days + 3)
-                    print(f"💡 SUGESTÃO: Para evitar stockout, start_cutoff_date deveria ser {ideal_start_cutoff.strftime('%Y-%m-%d')} ou anterior")
-                    print(f"💡 ALTERNATIVA: Considerar fornecedor com lead time menor ({leadtime_days} dias é muito longo para este cenário)")
         
         # Calcular quantos lotes são necessários (configurável via max_batches_long_leadtime)
         # 🎯 NOVO: Usar max_batch_size efetivo (manual ou auto-calculado)
         annual_demand = demand_stats['mean'] * 365
         max_batch_size = self._get_effective_max_batch_size(annual_demand)
         
-        # 🔥 CORREÇÃO: Número de lotes baseado no lead time
+        # 🔥 CORREÇÃO CRÍTICA: Para lead times extremamente longos (>45 dias), 
+        # aumentar o número máximo de lotes para evitar gaps críticos
         base_max_batches = getattr(self.params, 'max_batches_long_leadtime', 3)
         if leadtime_days >= 45:
+            # Para lead times extremos, permitir mais lotes para reduzir gaps
             if leadtime_days >= 75:
-                max_batches_extreme = max(base_max_batches, int(leadtime_days / 12), 6)
-                max_batches_extreme = min(max_batches_extreme, 10)
+                # Para casos ultra-extremos (≥75 dias), permitir até 6 lotes
+                max_batches_extreme = max(base_max_batches, int(leadtime_days / 12), 6)  # 1 lote a cada 12 dias, mín 6
+                max_batches_extreme = min(max_batches_extreme, 10)  # Máximo 10 lotes
             else:
-                max_batches_extreme = max(base_max_batches, int(leadtime_days / 15))
-                max_batches_extreme = min(max_batches_extreme, 8)
+                # Para casos extremos padrão (45-74 dias)
+                max_batches_extreme = max(base_max_batches, int(leadtime_days / 15))  # 1 lote a cada 15 dias
+                max_batches_extreme = min(max_batches_extreme, 8)  # Máximo 8 lotes
+            print(f"🔥 Lead time extremo ({leadtime_days} dias): aumentando max_batches de {base_max_batches} para {max_batches_extreme}")
         else:
             max_batches_extreme = base_max_batches
         
-        # 🎯 INICIALIZAR quantity_needed
-        quantity_needed = 0  # Será definida adequadamente abaixo
-        
-        # 🎯 CORREÇÃO CRÍTICA: Para exact_quantity_match, usar detecção inteligente de stockout
-        if exact_mode:
-            # ✅ PASSO 1: CALCULAR quantidade base necessária
-            base_quantity_needed = max(0, total_demand - initial_stock)
-            
-            # Calcular número básico de lotes com base na quantity base
-            days_available = (end_cutoff - first_order_date).days
-            max_sequential_batches = max(1, int(days_available / (leadtime_days + 1)))
-            min_batches_needed = max(1, int(np.ceil(base_quantity_needed / max_batch_size)))
-            num_batches = min(max_sequential_batches, min_batches_needed, max_batches_extreme)
-            
-            # ✅ PASSO 2: SIMULAR com distribuição UNIFORME primeiro
-            uniform_quantity_per_batch = base_quantity_needed / num_batches
-            stockout_detected = self._simulate_stockout_detection(
-                demand_df, initial_stock, leadtime_days, 
-                first_order_date, first_arrival_date, 
-                num_batches, uniform_quantity_per_batch, end_cutoff
-            )
-            
-            # 🚨 PASSO 3: CALCULAR COMPENSAÇÃO baseada na simulação (apenas para distribuição)
-            stockout_compensation = 0
-            if stockout_detected['has_stockout']:
-                # Calcular déficit de stockout APENAS para ajustar distribuição entre lotes
-                # Mas NÃO para aumentar quantidade total no modo exact
-                stockout_deficit = self._calculate_stockout_deficit(
-                    demand_df, initial_stock, leadtime_days, 
-                    first_order_date, first_arrival_date, 
-                    num_batches, uniform_quantity_per_batch, end_cutoff
-                )
-                stockout_compensation = abs(stockout_deficit) if stockout_deficit < 0 else stockout_deficit
-                
-            # ✅ PASSO 4: Definir quantity_needed final SEM compensação (modo exact)
-            # 🎯 CORREÇÃO CRÍTICA: Para exact_quantity_match, nunca adicionar compensação
-            quantity_needed = base_quantity_needed  # SEM compensação extra
-            print(f"🎯 MODO EXATO: Demanda total={total_demand:.0f}, Estoque inicial={initial_stock:.0f}")
-            print(f"🎯 Base necessário={base_quantity_needed:.0f}, Compensação stockout={stockout_compensation:.0f}")
-            print(f"🎯 TOTAL A PRODUZIR={quantity_needed:.0f} (EXATO - sem compensação extra)")
-            
+        # 🎯 NOVO: Se exact_quantity_match for True, produzir exatamente a demanda total
+        if getattr(self, '_exact_quantity_match', False):
+            # Lógica correta: produzir apenas o que falta para atingir exatamente a demanda total
+            # Se estoque inicial >= demanda total, não produzir nada
+            # Se estoque inicial < demanda total, produzir apenas o déficit
+            quantity_needed = max(0, total_demand - initial_stock)
         else:
-            # 🎯 CORREÇÃO CRÍTICA: Para casos não-exact, usar comportamento original
-            quantity_needed = total_demand + safety_margin - initial_stock
-            
-            # Definir variáveis necessárias para casos não-exact
-            base_num_batches = max(1, int(np.ceil(quantity_needed / max_batch_size)))
-            if leadtime_days >= 75:  # Aplicar limite apenas para casos ultra-extremos
-                num_batches = min(max_batches_extreme, base_num_batches)
-            else:
-                num_batches = base_num_batches  # Sem limite artificial
-                
-            quantity_per_batch = quantity_needed / num_batches
-            stockout_detected = {'has_stockout': False}  # Para compatibilidade
+            quantity_needed = total_demand + safety_margin - initial_stock  # Comportamento original
         
-        # Verificar se há quantidade necessária
         if quantity_needed <= 0:
             return batches
-        
-        # 🎯 PROCESSAMENTO PRINCIPAL: Aplicar estratégias baseadas no modo
-        if exact_mode and stockout_detected['has_stockout']:
-            # 🚨 STOCKOUT DETECTADO: Aplicar distribuição compensatória
-            print(f"🚨 STOCKOUT DETECTADO: {stockout_detected['stockout_days']} dias de ruptura")
-            print(f"💡 Aplicando distribuição compensatória inteligente...")
             
-            # Aumentar número de lotes se necessário
-            if leadtime_days >= 50:
-                num_batches = min(max_sequential_batches, num_batches + 1, 6)
+        # 🎯 CORREÇÃO DO BUG: Para exact_quantity_match, priorizar produzir a quantidade exata
+        if getattr(self, '_exact_quantity_match', False):
+            # Calcular quantos lotes são possíveis dentro do período
+            # Com produção sequencial, cada lote precisa de leadtime_days + 1 dia de intervalo
+            days_available = (end_cutoff - first_order_date).days
+            max_sequential_batches = max(1, int(days_available / (leadtime_days + 1)))
             
-            # Calcular distribuição proporcional baseada na urgência
-            batch_weights = self._calculate_compensatory_distribution(
-                stockout_detected, num_batches, leadtime_days, initial_stock
-            )
+            # Calcular número mínimo de lotes necessários baseado no max_batch_size
+            min_batches_needed = max(1, int(np.ceil(quantity_needed / max_batch_size)))
             
-            # Distribuir quantidade proporcionalmente
-            quantities = []
-            for weight in batch_weights:
-                quantities.append(quantity_needed * weight)
+            # 🔥 CORREÇÃO: Para lead times extremos, permitir mais lotes se necessário
+            max_batches_limit = max_batches_extreme
             
-            print(f"🎯 DISTRIBUIÇÃO COMPENSATÓRIA: {num_batches} lotes com pesos {[f'{w:.2f}' for w in batch_weights]}")
-            for i, qty in enumerate(quantities):
-                print(f"   Lote {i+1}: {qty:.0f} unidades ({qty/quantity_needed*100:.1f}%)")
+            # Escolher entre: sequencial possível, necessário pelo tamanho, e limite extremo
+            num_batches = min(max_sequential_batches, min_batches_needed, max_batches_limit)
             
-        elif exact_mode:
-            # ✅ SEM STOCKOUT: Manter distribuição uniforme normal
-            quantities = [uniform_quantity_per_batch] * num_batches
-            print(f"✅ SEM STOCKOUT DETECTADO: Mantendo distribuição uniforme")
-            print(f"🎯 MODO EXATO: {num_batches} lotes de {uniform_quantity_per_batch:.0f} unidades cada")
+            # Se não conseguimos fazer todos os lotes necessários dentro do prazo,
+            # aumentar o tamanho de cada lote para compensar
+            base_quantity_per_batch = quantity_needed / num_batches
+            quantity_per_batch = max(1.0, base_quantity_per_batch)
             
-        # 🎯 APLICAR COMPENSAÇÕES ADICIONAIS para casos não-exact
-        if not exact_mode:
+        else:
+            # Comportamento original para casos não-exact
+            # 🔥 CORREÇÃO: Usar max_batches_extreme em vez de max_batches_long_leadtime
+            num_batches = min(max_batches_extreme, max(1, int(np.ceil(quantity_needed / max_batch_size))))
+            quantity_per_batch = quantity_needed / num_batches
+            
             # Ajustar para múltiplos do lote mínimo (comportamento original)
             quantity_per_batch = max(self.params.min_batch_size, 
                                    np.ceil(quantity_per_batch / self.params.min_batch_size) * self.params.min_batch_size)
             
-            # Aplicar compensações apenas se NÃO estivermos em modo ignore_safety
-            if not ignore_safety:
-                # Simular gaps para verificar se haverá stockout
-                current_order_date_sim = first_order_date
-                gap_consumptions = []
+            # 🎯 NOVO: Aplicar compensação de gaps também para casos não-exact
+            # Simular gaps para verificar se haverá stockout
+            current_order_date_sim = first_order_date
+            gap_consumptions = []
+            
+            for i in range(num_batches):
+                if i > 0:
+                    prev_arrival = current_order_date_sim + pd.Timedelta(days=leadtime_days)
+                    current_order_date_sim = prev_arrival + pd.Timedelta(days=1)
                 
-                for i in range(num_batches):
-                    if i > 0:
-                        prev_arrival = current_order_date_sim + pd.Timedelta(days=leadtime_days)
-                        current_order_date_sim = prev_arrival + pd.Timedelta(days=1)
-                    
-                    arrival_date_sim = current_order_date_sim + pd.Timedelta(days=leadtime_days)
-                    
-                    if i < num_batches - 1:
-                        next_order_sim = arrival_date_sim + pd.Timedelta(days=1)
-                        next_arrival_sim = next_order_sim + pd.Timedelta(days=leadtime_days) 
-                        gap_days = (next_arrival_sim - arrival_date_sim).days
-                        gap_consumptions.append(gap_days * demand_stats['mean'])
-                    else:
-                        remaining_days = max(0, (end_cutoff - arrival_date_sim).days)
-                        gap_consumptions.append(remaining_days * demand_stats['mean'])
+                arrival_date_sim = current_order_date_sim + pd.Timedelta(days=leadtime_days)
                 
-                total_gap_consumption = sum(gap_consumptions) if gap_consumptions else 0
-                total_planned_production = quantity_per_batch * num_batches
+                if i < num_batches - 1:
+                    next_order_sim = arrival_date_sim + pd.Timedelta(days=1)
+                    next_arrival_sim = next_order_sim + pd.Timedelta(days=leadtime_days) 
+                    gap_days = (next_arrival_sim - arrival_date_sim).days
+                    gap_consumptions.append(gap_days * demand_stats['mean'])
+                else:
+                    remaining_days = max(0, (end_cutoff - arrival_date_sim).days)
+                    gap_consumptions.append(remaining_days * demand_stats['mean'])
+            
+            total_gap_consumption = sum(gap_consumptions) if gap_consumptions else 0
+            total_planned_production = quantity_per_batch * num_batches
+            
+            # 🔥 CORREÇÃO CRÍTICA: Para lead times extremos (≥45 dias), compensação mais agressiva
+            extreme_leadtime_factor = 1.0
+            if leadtime_days >= 75:
+                extreme_leadtime_factor = 2.5  # 150% mais compensação para casos ultra-extremos
+                print(f"🔥 Lead time ultra-extremo: aplicando fator de compensação {extreme_leadtime_factor}x")
+            elif leadtime_days >= 60:
+                extreme_leadtime_factor = 2.0  # 100% mais compensação para casos muito extremos  
+                print(f"🔥 Lead time muito extremo: aplicando fator de compensação {extreme_leadtime_factor}x")
+            elif leadtime_days >= 45:
+                extreme_leadtime_factor = 1.5  # 50% mais compensação para casos extremos
+                print(f"🔥 Lead time extremo: aplicando fator de compensação {extreme_leadtime_factor}x")
+            
+            # 🎯 CORREÇÃO CRÍTICA: Para ignore_safety_stock=True, aplicar compensação obrigatória
+            if getattr(self, '_ignore_safety_stock', False):
+                # Mesmo ignorando safety stock, precisamos compensar gaps inevitáveis para evitar stockout
+                if total_gap_consumption > quantity_needed:
+                    critical_gap_deficit = total_gap_consumption - quantity_needed
+                    mandatory_compensation = critical_gap_deficit * 1.1 * extreme_leadtime_factor  # Aplicar fator extremo
+                    quantity_per_batch += mandatory_compensation / num_batches
+                    print(f"🚨 CORREÇÃO CRÍTICA (ignore_safety_stock): compensando {mandatory_compensation / num_batches:.0f} unidades por lote para evitar stockout")
+                elif leadtime_days >= 40:
+                    # Para lead times extremamente longos, garantir compensação mínima obrigatória
+                    min_mandatory_compensation = total_gap_consumption * 0.8 * extreme_leadtime_factor  # Aplicar fator extremo
+                    quantity_per_batch += min_mandatory_compensation / num_batches
+                    print(f"🚨 COMPENSAÇÃO OBRIGATÓRIA (ignore_safety_stock): {min_mandatory_compensation / num_batches:.0f} unidades por lote")
                 
-                # Aplicar compensações apenas para casos com safety stock habilitado
+                # EXTRA: Para casos extremos de lead time muito longo (>45 dias), compensação adicional
+                if leadtime_days >= 45:
+                    extra_buffer = total_gap_consumption * 0.5 * extreme_leadtime_factor  # Aumentado de 30% para 50% + fator extremo
+                    quantity_per_batch += extra_buffer / num_batches
+                    print(f"🔥 BUFFER EXTRA (lead time ≥45 dias): {extra_buffer / num_batches:.0f} unidades por lote")
+            else:
+                # Lógica original para casos com safety stock
+                # Se gaps consomem mais que a produção planejada, compensar
                 if total_gap_consumption > total_planned_production:
                     gap_deficit = total_gap_consumption - total_planned_production
-                    compensation = gap_deficit * 0.5  # Compensação reduzida
+                    compensation = gap_deficit * 0.8 * extreme_leadtime_factor  # Aplicar fator extremo
                     quantity_per_batch += compensation / num_batches
-                    print(f"⚠️ Compensação de gap aplicada: {compensation / num_batches:.0f} unidades por lote")
+                    print(f"⚠️  Gap crítico detectado (non-exact): aumentando cada lote em {compensation / num_batches:.0f} unidades")
+                else:
+                    # Para lead times muito longos, garantir produção adequada
+                    if leadtime_days >= 45:
+                        # Calcular déficit total (demanda + safety_margin - estoque inicial)
+                        total_requirement = total_demand + safety_margin - initial_stock
+                        
+                        # Se produção planejada é menor que necessária, compensar
+                        if total_planned_production < total_requirement:
+                            shortfall = total_requirement - total_planned_production
+                            gap_compensation = (shortfall + (total_gap_consumption * 0.5)) * extreme_leadtime_factor  # Aumentado de 30% para 50% + fator extremo
+                            quantity_per_batch += gap_compensation / num_batches
+                            print(f"⚠️  Produção insuficiente (non-exact): compensando {gap_compensation / num_batches:.0f} unidades por lote")
+                        else:
+                            # Mesmo se produção é suficiente, compensar gaps mínimos
+                            min_gap_compensation = total_gap_consumption * 0.4 * extreme_leadtime_factor  # Aumentado de 20% para 40% + fator extremo
+                            quantity_per_batch += min_gap_compensation / num_batches
+                            print(f"⚠️  Compensação de gaps (non-exact): {min_gap_compensation / num_batches:.0f} unidades por lote")
         
-        # 🎯 CORREÇÃO: Melhor distribuição temporal dos lotes
-        # Calcular intervalos otimizados entre lotes baseado no período total
-        period_days = (end_cutoff - first_arrival_date).days
-        if num_batches > 1:
-            optimal_interval = max(leadtime_days + 7, period_days // (num_batches - 1))  # Espaçamento mínimo de LT + 7 dias
-        else:
-            optimal_interval = 0
-        
-        # Criar os lotes
+        # Criar os lotes com espaçamento adequado
         current_order_date = first_order_date
         current_stock_projection = initial_stock
         
-        for i in range(num_batches):
-            # 🎯 CORREÇÃO CRÍTICA: Garantir que produção só comece após anterior terminar
-            if i == 0:
-                # Primeiro lote: usar data calculada
-                arrival_date = first_arrival_date
-                current_order_date = first_order_date
-            else:
-                # 🚨 RESTRIÇÃO CRÍTICA: Próximo pedido só pode começar após chegada do anterior
-                previous_batch = batches[-1] if batches else None
-                if previous_batch:
-                    previous_arrival_date = pd.to_datetime(previous_batch.arrival_date)
-                    earliest_next_order = previous_arrival_date + pd.Timedelta(days=1)  # 1 dia após término
-                else:
-                    earliest_next_order = current_order_date + pd.Timedelta(days=7)  # Gap mínimo padrão
+        # 🎯 CORREÇÃO DO BUG: Para exact_quantity_match, calcular as quantidades considerando gaps inevitáveis
+        if getattr(self, '_exact_quantity_match', False):
+            # Para produção sequencial, simular gaps e dimensionar lotes adequadamente
+            quantities = []
+            
+            # Simular quando cada lote chegará e calcular gaps de consumo
+            current_order_date_sim = first_order_date
+            gap_consumptions = []
+            
+            for i in range(num_batches):
+                if i > 0:
+                    # Próximo pedido só após chegada do anterior (restrição sequencial)
+                    prev_arrival = current_order_date_sim + pd.Timedelta(days=leadtime_days)
+                    current_order_date_sim = prev_arrival + pd.Timedelta(days=1)
                 
-                # Lotes seguintes: distribuir respeitando restrição de sequencialidade
-                if exact_mode and num_batches > 1:
-                    # 🎯 DISTRIBUIÇÃO MELHORADA: Baseada na detecção de stockout
-                    has_end_stockout = stockout_detected.get('has_end_period_stockout', False)
+                arrival_date_sim = current_order_date_sim + pd.Timedelta(days=leadtime_days)
+                
+                if i < num_batches - 1:
+                    # Gap até próximo lote
+                    next_order_sim = arrival_date_sim + pd.Timedelta(days=1)
+                    next_arrival_sim = next_order_sim + pd.Timedelta(days=leadtime_days) 
+                    gap_days = (next_arrival_sim - arrival_date_sim).days
+                    gap_consumptions.append(gap_days * demand_stats['mean'])
+                else:
+                    # Último lote: consumo até fim do período
+                    remaining_days = max(0, (end_cutoff - arrival_date_sim).days)
+                    gap_consumptions.append(remaining_days * demand_stats['mean'])
+            
+            # Verificar se haverá stockout e compensar adequadamente
+            total_gap_consumption = sum(gap_consumptions) if gap_consumptions else 0
+            
+            # Se gaps > quantity_needed, precisamos de compensação extra para evitar stockout
+            if total_gap_consumption > quantity_needed:
+                # Situação crítica: gaps consomem mais que a produção planejada
+                # Aumentar quantity_needed para incluir compensação de gap
+                gap_deficit = total_gap_consumption - quantity_needed
+                # 🔥 CORREÇÃO: Aplicar fator de lead time extremo para compensação mais agressiva
+                extreme_leadtime_factor_exact = 1.0
+                if leadtime_days >= 75:
+                    extreme_leadtime_factor_exact = 2.5  # 150% mais compensação para casos ultra-extremos
+                elif leadtime_days >= 60:
+                    extreme_leadtime_factor_exact = 2.0  # 100% mais compensação para casos muito extremos
+                elif leadtime_days >= 45:
+                    extreme_leadtime_factor_exact = 1.5  # 50% mais compensação para casos extremos
                     
-                    if stockout_detected['has_stockout']:
-                        if has_end_stockout:
-                            # 🚨 STOCKOUT NO FINAL: Tentar antecipar mas respeitando sequência
-                            print(f"🚨 Aplicando distribuição temporal anti-stockout-final para lote {i+1} (com restrição sequencial)")
-                            
-                            if num_batches == 3:
-                                # Para 3 lotes: calcular data ideal e ajustar se necessário
-                                if i == 1:  # Segundo lote: mais cedo se possível
-                                    progress = 0.4  # 40% do período
-                                else:  # Terceiro lote: mais cedo se possível
-                                    progress = 0.65  # 65% do período
-                            else:
-                                # Para outros casos: acelerar últimos lotes se possível
-                                if i >= num_batches // 2:  # Segunda metade
-                                    progress = (i / (num_batches - 1)) * 0.7  # 70% do período
-                                else:
-                                    progress = (i / (num_batches - 1)) * 0.8  # 80% normal
-                            
-                            ideal_arrival = first_arrival_date + pd.Timedelta(days=int(period_days * progress))
-                            ideal_order = ideal_arrival - pd.Timedelta(days=leadtime_days)
-                            
-                            # ✅ APLICAR RESTRIÇÃO: Usar o mais tarde entre ideal e earliest_next_order
-                            current_order_date = max(ideal_order, earliest_next_order)
-                            
-                            # Se a restrição forçou atraso, reportar
-                            if current_order_date > ideal_order:
-                                delay_days = (current_order_date - ideal_order).days
-                                print(f"⚠️ Lote {i+1} atrasado {delay_days} dias devido à restrição sequencial")
-                            
-                        elif stockout_detected['severity'] == 'critical':
-                            # CENÁRIO CRÍTICO NORMAL: Minimizar gaps respeitando sequência
-                            min_gap = 1  # Gap mínimo de 1 dia
-                            current_order_date = earliest_next_order
-                            
-                        else:
-                            # CENÁRIO MODERADO: Gap pequeno
-                            min_gap = 3  # Gap de 3 dias
-                            current_order_date = earliest_next_order + pd.Timedelta(days=min_gap-1)
-                    else:
-                        # Distribuição normal sem stockout: gap padrão
-                        min_gap = 7  # Gap padrão de 7 dias
-                        current_order_date = earliest_next_order + pd.Timedelta(days=min_gap-1)
+                adjusted_quantity_needed = quantity_needed + (gap_deficit * 0.9 * extreme_leadtime_factor_exact)  # Aumentado de 80% para 90% + fator extremo
+                print(f"⚠️  Gap crítico detectado (exact): aumentando produção em {gap_deficit * 0.9 * extreme_leadtime_factor_exact:.0f} unidades")
+            else:
+                # 🔥 CORREÇÃO: Mesmo sem gap crítico, para lead times extremos aplicar compensação mínima
+                extreme_leadtime_factor_exact = 1.0
+                if leadtime_days >= 75:
+                    extreme_leadtime_factor_exact = 2.0  # 100% mais compensação para casos ultra-extremos
+                    min_compensation = total_gap_consumption * 0.5 * extreme_leadtime_factor_exact  # 50% dos gaps
+                    adjusted_quantity_needed = quantity_needed + min_compensation
+                    print(f"🔥 Compensação mínima para lead time ultra-extremo (exact): {min_compensation:.0f} unidades")
+                elif leadtime_days >= 60:
+                    extreme_leadtime_factor_exact = 1.6  # 60% mais compensação para casos muito extremos
+                    min_compensation = total_gap_consumption * 0.4 * extreme_leadtime_factor_exact  # 40% dos gaps
+                    adjusted_quantity_needed = quantity_needed + min_compensation
+                    print(f"🔥 Compensação mínima para lead time muito extremo (exact): {min_compensation:.0f} unidades")
+                elif leadtime_days >= 45:
+                    extreme_leadtime_factor_exact = 1.2  # 20% mais compensação para casos extremos
+                    min_compensation = total_gap_consumption * 0.3 * extreme_leadtime_factor_exact  # 30% dos gaps
+                    adjusted_quantity_needed = quantity_needed + min_compensation
+                    print(f"🔥 Compensação mínima para lead time extremo (exact): {min_compensation:.0f} unidades")
                 else:
-                    # Lógica original para casos não-exact: sequencial simples
-                    current_order_date = earliest_next_order
+                    adjusted_quantity_needed = quantity_needed
+            
+            for i in range(num_batches):
+                # Quantidade base uniforme da quantidade ajustada
+                base_share = adjusted_quantity_needed / num_batches
                 
-                arrival_date = current_order_date + pd.Timedelta(days=leadtime_days)
+                # Compensação adicional para os lotes que precisam cobrir gaps maiores
+                if gap_consumptions and i < len(gap_consumptions):
+                    gap_consumption = gap_consumptions[i]
+                    
+                    # Se este lote precisa cobrir um gap maior que sua quantidade base, compensar
+                    if gap_consumption > base_share:
+                        gap_compensation = (gap_consumption - base_share) * 0.9  # 90% do excesso
+                        lote_quantity = base_share + gap_compensation
+                    else:
+                        lote_quantity = base_share
+                else:
+                    lote_quantity = base_share
+                
+                quantities.append(lote_quantity)
+            
+            # Normalizar para não exceder muito a demanda total (máximo 120% da demanda)
+            total_calc = sum(quantities)
+            max_allowed = quantity_needed * 1.2  # Máximo 20% extra
+            if total_calc > max_allowed:
+                quantities = [(q / total_calc) * max_allowed for q in quantities]
+        
+        for i in range(num_batches):
+            # Calcular quando fazer o pedido considerando produção sequencial
+            if i > 0:
+                # Próximo pedido só pode ser feito após o anterior terminar
+                current_order_date = batches[-1].arrival_date
+                current_order_date = pd.to_datetime(current_order_date) + pd.Timedelta(days=1)  # Dia seguinte
+            
+            arrival_date = current_order_date + pd.Timedelta(days=leadtime_days)
             
             # Verificar se está dentro do período válido
             if arrival_date > end_cutoff:
                 break
             
-            # 🎯 CORREÇÃO CRÍTICA: Determinar quantidade correta para este lote
-            if exact_mode:
-                # MODO EXATO: Usar quantidades já calculadas (uniforme ou compensatória)
-                current_batch_quantity = quantities[i] if i < len(quantities) else quantities[-1]
-                
-                # 🎯 CORREÇÃO CRÍTICA: Ajustar último lote para estoque final = 0
-                if i == num_batches - 1:
-                    already_produced = sum(b.quantity for b in batches)
-                    
-                    # Para modo exato: garantir que estoque final = 0 (demanda total - estoque inicial)
-                    target_final_production = total_demand - initial_stock
-                    final_batch_quantity = target_final_production - already_produced
-                    
-                    # 🚨 VALIDAÇÃO CRÍTICA: Nunca permitir lotes negativos
-                    if final_batch_quantity < 0:
-                        print(f"⚠️ AVISO: Último lote seria negativo ({final_batch_quantity:.0f})")
-                        print(f"    Já produzido: {already_produced:.0f}, Meta: {target_final_production:.0f}")
-                        # Se já produzimos demais, ajustar lotes anteriores
-                        if len(batches) > 0:
-                            excess = abs(final_batch_quantity)
-                            # Distribuir o excesso removendo dos lotes anteriores proporcionalmente
-                            total_previous = sum(b.quantity for b in batches)
-                            if total_previous > excess:
-                                reduction_factor = (total_previous - excess) / total_previous
-                                for batch in batches:
-                                    batch.quantity = batch.quantity * reduction_factor
-                                final_batch_quantity = 0  # Zerar último lote
-                                print(f"🔄 Lotes anteriores reduzidos em {(1-reduction_factor)*100:.1f}%")
-                            else:
-                                final_batch_quantity = self.params.min_batch_size  # Mínimo aceitável
-                        else:
-                            final_batch_quantity = self.params.min_batch_size
-                    
-                    # Aplicar mínimo se necessário
-                    final_batch_quantity = max(final_batch_quantity, self.params.min_batch_size)
-                    
-                    if abs(final_batch_quantity - current_batch_quantity) > 1.0:  # Só ajustar se diferença significativa
-                        current_batch_quantity = final_batch_quantity
-                        print(f"🎯 Último lote ajustado para {current_batch_quantity:.0f} unidades (garantir estoque final = 0)")
-                        
-                    # Recalcular total
-                    total_after_adjustment = sum(b.quantity for b in batches) + current_batch_quantity
-                    print(f"🎯 Total produzido final: {total_after_adjustment:.0f} unidades")
-                
+            # 🎯 CORREÇÃO DO BUG: Determinar quantidade correta para este lote
+            if getattr(self, '_exact_quantity_match', False):
+                current_batch_quantity = quantities[i]
             else:
                 # Comportamento original
                 current_batch_quantity = quantity_per_batch
@@ -1404,20 +1359,11 @@ class MRPOptimizer:
                     if remaining_need > 0:
                         current_batch_quantity = max(self.params.min_batch_size, remaining_need)
             
-            # Aplicar limites
-            if not exact_mode:
-                # 🎯 CORREÇÃO: No comportamento original, só aplicar max_batch_size se for muito maior que o necessário
-                # Permitir lotes maiores quando necessário para atender demanda + safety stock
-                current_batch_quantity = max(self.params.min_batch_size, current_batch_quantity)
-                # Só limitar se for excessivamente grande (mais que 150% da quantidade planejada)
-                if current_batch_quantity > quantity_per_batch * 1.5:
-                    current_batch_quantity = min(self.params.max_batch_size, current_batch_quantity)
+            # 🎯 CORREÇÃO: Para exact_quantity_match, usar precisão maior no último lote
+            if getattr(self, '_exact_quantity_match', False) and i == num_batches - 1:
+                final_quantity = current_batch_quantity  # Sem arredondamento no último lote
             else:
-                # Em modo exato, só aplicar limite mínimo se necessário
-                if current_batch_quantity < self.params.min_batch_size:
-                    current_batch_quantity = self.params.min_batch_size
-            
-            final_quantity = round(current_batch_quantity, 3)
+                final_quantity = round(current_batch_quantity, 3)
             
             batch = BatchResult(
                 order_date=current_order_date.strftime('%Y-%m-%d'),
@@ -1431,374 +1377,85 @@ class MRPOptimizer:
                     'urgency_level': 'planned',
                     'batch_sequence': i + 1,
                     'total_batches_planned': num_batches,
-                    'production_strategy': 'exact_quantity' if exact_mode else 'sequential_large_batches',
-                    'exact_mode': exact_mode,
-                    'ignore_safety_mode': ignore_safety,
-                    'stockout_detection_used': exact_mode,
-                    'distribution_type': 'compensatory' if (exact_mode and 'stockout_detected' in locals() and stockout_detected['has_stockout']) else 'uniform'
+                    'production_strategy': 'sequential_large_batches'
                 }
             )
             batches.append(batch)
             current_stock_projection += current_batch_quantity
         
-        # 🎯 VALIDAÇÃO FINAL: Verificar se total produzido garante estoque final = 0
-        total_produced = sum(b.quantity for b in batches)
-        if exact_mode:
-            # Validar contra demanda real (não compensação)
-            expected_for_zero_final_stock = total_demand - initial_stock
-            if abs(total_produced - expected_for_zero_final_stock) > 0.01:  # Tolerância para arredondamentos
-                print(f"⚠️ AVISO: Total produzido ({total_produced:.0f}) não resultará em estoque final = 0")
-                print(f"⚠️ Esperado para estoque final = 0: {expected_for_zero_final_stock:.0f}")
-            else:
-                print(f"✅ MODO EXATO: Total produzido = {total_produced:.0f} (garante estoque final = 0)")
+        # 🔥 VALIDAÇÃO CRÍTICA: Para lead times extremos, verificar se ainda há risco de stockout
+        if leadtime_days >= 60 and batches:
+            # Simular evolução de estoque rápida para detectar riscos
+            current_sim_stock = initial_stock
+            stockout_risk_detected = False
+            critical_gap_found = False
+            
+            # Verificar gaps críticos entre lotes
+            for i, batch in enumerate(batches):
+                # Consumo até chegada do lote
+                arrival_date = pd.to_datetime(batch.arrival_date)
                 
-            # Mostrar também a compensação aplicada se foi calculada
-            compensation_applied = quantity_needed - (total_demand - initial_stock)
-            if compensation_applied > 0:
-                print(f"📊 Compensação anti-stockout aplicada: +{compensation_applied:.0f} unidades")
+                if i == 0:
+                    days_until_arrival = (arrival_date - demand_df.index[0]).days
+                else:
+                    prev_arrival_date = pd.to_datetime(batches[i-1].arrival_date)
+                    days_until_arrival = (arrival_date - prev_arrival_date).days
+                
+                consumption_until_arrival = days_until_arrival * demand_stats['mean']
+                projected_stock_before_arrival = current_sim_stock - consumption_until_arrival
+                
+                if projected_stock_before_arrival < 0:
+                    stockout_risk_detected = True
+                    deficit = abs(projected_stock_before_arrival)
+                    print(f"🚨 RISCO CRÍTICO: Stockout de {deficit:.0f} unidades antes do lote {i+1}")
+                    critical_gap_found = True
+                    break
+                
+                # Se chegou aqui sem stockout, atualizar estoque
+                current_sim_stock = projected_stock_before_arrival + batch.quantity
+            
+            # Se detectou risco crítico, forçar lote de emergência
+            if critical_gap_found and len(batches) <= max_batches_extreme:
+                print(f"🔥 CRIANDO LOTE DE EMERGÊNCIA para lead time extremo")
+                
+                # Calcular quando fazer um lote de emergência
+                emergency_arrival_target = demand_df.index[0] + pd.Timedelta(days=int(days_of_coverage * 0.8))  # 80% da cobertura inicial
+                emergency_order_date = emergency_arrival_target - pd.Timedelta(days=leadtime_days)
+                
+                if emergency_order_date >= start_cutoff:
+                    # Quantidade de emergência baseada na demanda crítica
+                    emergency_quantity = demand_stats['mean'] * leadtime_days * 1.2  # 120% do consumo do lead time
+                    
+                    emergency_batch = BatchResult(
+                        order_date=emergency_order_date.strftime('%Y-%m-%d'),
+                        arrival_date=emergency_arrival_target.strftime('%Y-%m-%d'),
+                        quantity=emergency_quantity,
+                        analytics={
+                            'stock_before_arrival': 0,  # Será atualizado depois
+                            'stock_after_arrival': emergency_quantity,
+                            'coverage_days': round(emergency_quantity / demand_stats['mean']) if demand_stats['mean'] > 0 else 0,
+                            'actual_lead_time': leadtime_days,
+                            'urgency_level': 'emergency',
+                            'batch_sequence': len(batches) + 1,
+                            'total_batches_planned': len(batches) + 1,
+                            'production_strategy': 'emergency_stockout_prevention'
+                        }
+                    )
+                    
+                    # Inserir na posição correta (ordenado por data de chegada)
+                    inserted = False
+                    for idx, existing_batch in enumerate(batches):
+                        if emergency_arrival_target < pd.to_datetime(existing_batch.arrival_date):
+                            batches.insert(idx, emergency_batch)
+                            inserted = True
+                            break
+                    
+                    if not inserted:
+                        batches.append(emergency_batch)
+                    
+                    print(f"✅ Lote de emergência criado: {emergency_quantity:.0f} unidades em {emergency_arrival_target.strftime('%Y-%m-%d')}")
         
         return batches
-    
-    def _simulate_stockout_detection(
-        self,
-        demand_df: pd.DataFrame,
-        initial_stock: float,
-        leadtime_days: int,
-        first_order_date: pd.Timestamp,
-        first_arrival_date: pd.Timestamp,
-        num_batches: int,
-        quantity_per_batch: float,
-        end_cutoff: pd.Timestamp
-    ) -> Dict:
-        """Simula evolução do estoque com distribuição uniforme para detectar stockouts"""
-        
-        # 🎯 CORREÇÃO: Usar mesma lógica sequencial da distribuição real dos lotes
-        period_days = (end_cutoff - first_arrival_date).days
-        arrival_dates = []
-        current_order_date = first_order_date
-        
-        for i in range(num_batches):
-            if i == 0:
-                arrival_dates.append(first_arrival_date)
-                current_order_date = first_order_date
-            else:
-                # 🚨 RESTRIÇÃO CRÍTICA: Próximo pedido só pode começar após chegada do anterior
-                previous_arrival_date = arrival_dates[-1]
-                earliest_next_order = previous_arrival_date + pd.Timedelta(days=1)  # 1 dia após término
-                
-                # Usar a mesma lógica de distribuição temporal da estratégia real
-                if num_batches > 1:
-                    # Calcular data ideal (como na lógica real)
-                    progress = i / (num_batches - 1)  # 0 a 1
-                    ideal_arrival = first_arrival_date + pd.Timedelta(days=int(period_days * progress * 0.8))
-                    ideal_order = ideal_arrival - pd.Timedelta(days=leadtime_days)
-                    
-                    # ✅ APLICAR RESTRIÇÃO SEQUENCIAL (igual à lógica real)
-                    current_order_date = max(ideal_order, earliest_next_order)
-                    arrival_date = current_order_date + pd.Timedelta(days=leadtime_days)
-                else:
-                    arrival_date = first_arrival_date
-                
-                arrival_dates.append(arrival_date)
-        
-        # Simular evolução do estoque
-        current_stock = initial_stock
-        stockout_days = 0
-        min_stock = initial_stock
-        stockout_periods = []
-        current_stockout_period = None
-        
-        # Criar timeline completo
-        start_date = demand_df.index[0]
-        end_date = demand_df.index[-1]
-        all_dates = pd.date_range(start_date, end_date, freq='D')
-        
-        for date in all_dates:
-            # Verificar se chegou algum lote hoje
-            for i, arrival_date in enumerate(arrival_dates):
-                if arrival_date.date() == date.date():
-                    current_stock += quantity_per_batch
-                    # Se estava em stockout e recebeu lote, terminar período
-                    if current_stockout_period and current_stock >= 0:
-                        current_stockout_period['end_date'] = date.strftime('%Y-%m-%d')
-                        stockout_periods.append(current_stockout_period)
-                        current_stockout_period = None
-                    
-            # Consumir demanda do dia
-            if date in demand_df.index:
-                daily_demand = demand_df.loc[date, 'demand']
-                current_stock -= daily_demand
-                
-            # Registrar se há stockout
-            if current_stock < 0:
-                stockout_days += 1
-                if current_stock < min_stock:
-                    min_stock = current_stock
-                
-                # Iniciar novo período de stockout se necessário
-                if not current_stockout_period:
-                    current_stockout_period = {
-                        'start_date': date.strftime('%Y-%m-%d'),
-                        'min_stock': current_stock
-                    }
-                else:
-                    # Atualizar mínimo do período atual
-                    if current_stock < current_stockout_period['min_stock']:
-                        current_stockout_period['min_stock'] = current_stock
-            elif current_stockout_period:
-                # Terminar período de stockout
-                current_stockout_period['end_date'] = (date - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
-                stockout_periods.append(current_stockout_period)
-                current_stockout_period = None
-        
-        # Fechar período de stockout se ainda ativo
-        if current_stockout_period:
-            current_stockout_period['end_date'] = end_date.strftime('%Y-%m-%d')
-            stockout_periods.append(current_stockout_period)
-        
-        # 🎯 NOVA LÓGICA: Detectar se stockout é no final do período
-        has_end_period_stockout = False
-        if stockout_periods:
-            last_period = stockout_periods[-1]
-            last_stockout_date = pd.to_datetime(last_period['end_date'])
-            days_to_end = (end_date - last_stockout_date).days
-            if days_to_end <= 20:  # Stockout nos últimos 20 dias
-                has_end_period_stockout = True
-                    
-        return {
-            'has_stockout': stockout_days > 0,
-            'stockout_days': stockout_days,
-            'min_stock': min_stock,
-            'severity': 'critical' if stockout_days > 14 else 'moderate' if stockout_days > 7 else 'mild',
-            'stockout_periods': stockout_periods,
-            'has_end_period_stockout': has_end_period_stockout,
-            'num_stockout_periods': len(stockout_periods)
-        }
-    
-    def _calculate_compensatory_distribution(
-        self,
-        stockout_info: Dict,
-        num_batches: int,
-        leadtime_days: int,
-        initial_stock: float = None
-    ) -> List[float]:
-        """Calcula distribuição compensatória baseada na severidade e padrão do stockout"""
-        
-        # 🎯 NOVA LÓGICA: Considerar se stockout é no final do período
-        has_end_stockout = stockout_info.get('has_end_period_stockout', False)
-        severity = stockout_info['severity']
-        
-        # 🚨 CASO ULTRA-CRÍTICO: Estoque inicial = 0 + Stockout crítico
-        is_zero_initial_stock = (initial_stock is not None and initial_stock == 0)
-        
-        if is_zero_initial_stock and severity == 'critical':
-            # 🚨 CONCENTRAÇÃO MÁXIMA NO PRIMEIRO LOTE
-            print(f"🚨 CASO ULTRA-CRÍTICO: Estoque inicial = 0 + Stockout crítico")
-            if num_batches <= 3:
-                weights = [0.7, 0.2, 0.1][:num_batches]  # 70% no primeiro lote!
-            elif num_batches == 4:
-                weights = [0.65, 0.2, 0.1, 0.05]  # 65% no primeiro
-            else:
-                # Ultra concentração no primeiro
-                weights = [0.7] + [0.3 / (num_batches - 1)] * (num_batches - 1)
-            
-            # Log especial
-            print(f"🎯 DISTRIBUIÇÃO ULTRA-CONCENTRADA: {[f'{w:.2f}' for w in weights]}")
-            return weights
-        
-        if has_end_stockout and severity in ['critical', 'moderate']:
-            # 🚨 STOCKOUT NO FINAL: Distribuição especial para antecipar último lote
-            print(f"🚨 STOCKOUT NO FINAL DETECTADO - Aplicando distribuição especial")
-            
-            if num_batches == 3:
-                # Para 3 lotes: redistribuir para o último lote chegar mais cedo
-                weights = [0.4, 0.35, 0.25]  # Mais balanceado
-            elif num_batches == 4:
-                weights = [0.35, 0.25, 0.25, 0.15]  # Mais peso nos intermediários
-            else:
-                # Para mais lotes: distribuição com concentração no meio
-                weights = []
-                for i in range(num_batches):
-                    if i == 0:
-                        weight = 0.35  # Primeiro: moderado
-                    elif i < num_batches // 2:
-                        weight = 0.25  # Meio: equilibrado
-                    else:
-                        weight = 0.20  # Final: um pouco menos
-                    weights.append(weight)
-                    
-        elif severity == 'critical':
-            # 🚨 STOCKOUT CRÍTICO: Concentrar agressivamente no primeiro lote
-            # Especialmente para estoque inicial = 0
-            if num_batches <= 3:
-                weights = [0.6, 0.25, 0.15][:num_batches]  # Mais peso no primeiro
-            elif num_batches == 4:
-                weights = [0.5, 0.25, 0.15, 0.1]  # 50% no primeiro lote
-            else:
-                # 5+ lotes: decaimento ainda mais agressivo
-                weights = []
-                for i in range(num_batches):
-                    weight = 0.55 * (0.6 ** i)  # Decaimento de 60% a cada lote
-                    weights.append(weight)
-                
-        elif severity == 'moderate':
-            # Stockout moderado: concentração média nos primeiros
-            if num_batches <= 3:
-                weights = [0.4, 0.35, 0.25][:num_batches]
-            elif num_batches == 4:
-                weights = [0.35, 0.3, 0.25, 0.1]
-            else:
-                weights = []
-                for i in range(num_batches):
-                    weight = 0.4 * (0.8 ** i)  # Decaimento de 80% a cada lote
-                    weights.append(weight)
-                    
-        else:  # mild
-            # Stockout leve: pouca compensação
-            if num_batches <= 3:
-                weights = [0.35, 0.33, 0.32][:num_batches]
-            else:
-                # Distribuição quase uniforme com leve inclinação
-                base_weight = 1.0 / num_batches
-                weights = []
-                for i in range(num_batches):
-                    adjustment = (num_batches - i - 1) * 0.02  # 2% extra por posição anterior
-                    weights.append(base_weight + adjustment)
-        
-        # Normalizar pesos para somar 1.0
-        total_weight = sum(weights)
-        normalized_weights = [w / total_weight for w in weights]
-        
-        # 🎯 LOG: Mostrar estratégia aplicada
-        strategy_type = "end_period_special" if has_end_stockout else f"standard_{severity}"
-        print(f"📊 ESTRATÉGIA: {strategy_type} - Pesos: {[f'{w:.2f}' for w in normalized_weights]}")
-        
-        return normalized_weights
-    
-    def _calculate_mathematical_compensation(
-        self,
-        demand_df: pd.DataFrame,
-        initial_stock: float,
-        first_arrival_date: pd.Timestamp,
-        leadtime_days: int
-    ) -> float:
-        """
-        🎯 CÁLCULO MATEMÁTICO PRECISO da compensação necessária para eliminar stockouts
-        """
-        
-        # 📊 PASSO 1: Calcular demanda acumulada até primeiro lote chegar
-        start_date = demand_df.index[0] 
-        demand_until_first_batch = 0
-        
-        print(f"📊 ANÁLISE MATEMÁTICA:")
-        print(f"   Estoque inicial: {initial_stock:,.0f}")
-        print(f"   Primeiro lote chega em: {first_arrival_date.strftime('%Y-%m-%d')}")
-        
-        current_date = start_date
-        days_until_first_batch = 0
-        while current_date <= first_arrival_date and current_date in demand_df.index:
-            if current_date.date() < first_arrival_date.date():  # Não incluir o dia de chegada
-                daily_demand = demand_df.loc[current_date, 'demand']
-                demand_until_first_batch += daily_demand
-                days_until_first_batch += 1
-            current_date += pd.Timedelta(days=1)
-        
-        print(f"   Demanda até primeiro lote: {demand_until_first_batch:,.0f} ({days_until_first_batch} dias)")
-        
-        # 📊 PASSO 2: Calcular déficit exato
-        deficit_at_first_batch = max(0, demand_until_first_batch - initial_stock)
-        
-        if deficit_at_first_batch > 0:
-            print(f"🚨 DÉFICIT CALCULADO: {deficit_at_first_batch:,.0f} unidades")
-            print(f"   Fórmula: max(0, {demand_until_first_batch:,.0f} - {initial_stock:,.0f}) = {deficit_at_first_batch:,.0f}")
-        else:
-            print(f"✅ SEM DÉFICIT: Estoque inicial é suficiente")
-            
-        return deficit_at_first_batch
-    
-    def _calculate_stockout_deficit(
-        self,
-        demand_df: pd.DataFrame,
-        initial_stock: float,
-        leadtime_days: int,
-        first_order_date: pd.Timestamp,
-        first_arrival_date: pd.Timestamp,
-        num_batches: int,
-        quantity_per_batch: float,
-        end_cutoff: pd.Timestamp
-    ) -> float:
-        """Calcula déficit total usando método matemático preciso + simulação para gaps"""
-        
-        # 🎯 MÉTODO 1: Cálculo matemático preciso para o primeiro período
-        mathematical_compensation = self._calculate_mathematical_compensation(
-            demand_df, initial_stock, first_arrival_date, leadtime_days
-        )
-        
-        # 🎯 MÉTODO 2: Simulação para detectar gaps entre lotes (método anterior)
-        # Simular datas de chegada com lógica sequencial
-        arrival_dates = []
-        current_order_date = first_order_date
-        
-        for i in range(num_batches):
-            if i == 0:
-                arrival_dates.append(first_arrival_date)
-                current_order_date = first_order_date
-            else:
-                # Restrição sequencial
-                previous_arrival_date = arrival_dates[-1]
-                earliest_next_order = previous_arrival_date + pd.Timedelta(days=1)
-                current_order_date = earliest_next_order
-                arrival_date = current_order_date + pd.Timedelta(days=leadtime_days)
-                arrival_dates.append(arrival_date)
-        
-        # Simular evolução do estoque COM a compensação matemática
-        adjusted_first_batch = quantity_per_batch + mathematical_compensation
-        current_stock = initial_stock
-        max_negative_after_compensation = 0
-        
-        # Criar timeline completo
-        start_date = demand_df.index[0]
-        end_date = demand_df.index[-1]
-        all_dates = pd.date_range(start_date, end_date, freq='D')
-        
-        for date in all_dates:
-            # Verificar se chegou algum lote hoje
-            for i, arrival_date in enumerate(arrival_dates):
-                if arrival_date.date() == date.date():
-                    if i == 0:
-                        current_stock += adjusted_first_batch  # Primeiro com compensação
-                    else:
-                        current_stock += quantity_per_batch   # Outros normais
-                    
-            # Consumir demanda do dia
-            if date in demand_df.index:
-                daily_demand = demand_df.loc[date, 'demand']
-                current_stock -= daily_demand
-                
-            # Registrar déficit restante após compensação
-            if current_stock < max_negative_after_compensation:
-                max_negative_after_compensation = current_stock
-        
-        # 🎯 COMPENSAÇÃO INTELIGENTE: Priorizar compensação matemática precisa
-        if mathematical_compensation > 0:
-            # Usar principalmente a compensação matemática precisa
-            additional_gap_compensation = min(
-                abs(max_negative_after_compensation) * 0.3,  # Máximo 30% do déficit restante
-                mathematical_compensation * 0.2  # Ou 20% da compensação matemática
-            )
-        else:
-            # Se não há déficit matemático, usar pequena compensação para gaps
-            additional_gap_compensation = abs(max_negative_after_compensation) * 0.5
-        
-        total_compensation = mathematical_compensation + additional_gap_compensation
-        
-        if additional_gap_compensation > 0:
-            print(f"📊 COMPENSAÇÃO ADICIONAL para gaps: +{additional_gap_compensation:.0f} unidades")
-        
-        print(f"🎯 COMPENSAÇÃO TOTAL: {total_compensation:.0f} unidades")
-        print(f"   Matemática: {mathematical_compensation:.0f} + Gaps: {additional_gap_compensation:.0f}")
-        
-        return total_compensation
     
     def _create_mrp_table(
         self,
@@ -1945,6 +1602,242 @@ class MRPOptimizer:
             i += 1
             
         return consolidated
+    
+    def _correct_early_stockout(
+        self,
+        batches: List[BatchResult],
+        demand_df: pd.DataFrame,
+        initial_stock: float,
+        leadtime_days: int
+    ) -> List[BatchResult]:
+        """
+        🎯 NOVO: Detecta e corrige stockout nos primeiros lotes aumentando suas quantidades
+        
+        Args:
+            batches: Lista de lotes planejados
+            demand_df: DataFrame com demandas diárias
+            initial_stock: Estoque inicial
+            leadtime_days: Lead time em dias
+            
+        Returns:
+            Lista de lotes corrigidos sem stockout nos primeiros períodos
+        """
+        if not batches:
+            return batches
+        
+        # Simular evolução do estoque com os lotes atuais
+        stock_evolution = self._simulate_detailed_stock_evolution(batches, demand_df, initial_stock)
+        
+        # Detectar stockouts nos primeiros períodos (até o terceiro lote)
+        stockout_periods = []
+        early_period_limit = min(len(batches), 3)  # Focar nos primeiros 3 lotes
+        
+        for i, (date, stock) in enumerate(stock_evolution.items()):
+            if stock < 0:
+                stockout_periods.append({
+                    'date': date,
+                    'stock': stock,
+                    'deficit': abs(stock),
+                    'period_index': i
+                })
+        
+        # Se não há stockout, retornar lotes originais
+        if not stockout_periods:
+            return batches
+        
+        print(f"🚨 Stockout detectado em {len(stockout_periods)} períodos - aplicando correção automática")
+        
+        # Calcular correção necessária
+        max_deficit = max(period['deficit'] for period in stockout_periods)
+        total_deficit = sum(period['deficit'] for period in stockout_periods)
+        
+        # Estratégia de correção baseada no lead time
+        corrected_batches = list(batches)  # Cópia dos lotes
+        
+        if leadtime_days <= 3:
+            # Lead time curto: corrigir principalmente o primeiro lote
+            correction_amount = max_deficit * 1.2  # 20% extra para segurança
+            self._increase_batch_quantity(corrected_batches, 0, correction_amount)
+            
+        elif leadtime_days <= 14:
+            # Lead time médio: distribuir correção entre os 2 primeiros lotes
+            first_correction = max_deficit * 0.7
+            second_correction = max_deficit * 0.5
+            
+            self._increase_batch_quantity(corrected_batches, 0, first_correction)
+            if len(corrected_batches) > 1:
+                self._increase_batch_quantity(corrected_batches, 1, second_correction)
+                
+        else:
+            # Lead time longo: distribuir correção entre os 3 primeiros lotes
+            first_correction = max_deficit * 0.6
+            second_correction = max_deficit * 0.4
+            third_correction = max_deficit * 0.3
+            
+            self._increase_batch_quantity(corrected_batches, 0, first_correction)
+            if len(corrected_batches) > 1:
+                self._increase_batch_quantity(corrected_batches, 1, second_correction)
+            if len(corrected_batches) > 2:
+                self._increase_batch_quantity(corrected_batches, 2, third_correction)
+        
+        # Validar se a correção foi efetiva
+        new_stock_evolution = self._simulate_detailed_stock_evolution(corrected_batches, demand_df, initial_stock)
+        remaining_stockouts = sum(1 for stock in new_stock_evolution.values() if stock < 0)
+        
+        # Se ainda há stockouts, aplicar correção adicional mais agressiva
+        if remaining_stockouts > 0:
+            print(f"⚠️  Stockouts remanescentes detectados - aplicando correção adicional")
+            
+            remaining_deficit = abs(min(new_stock_evolution.values()))
+            emergency_correction = remaining_deficit * 1.5  # 50% extra
+            
+            # Aplicar toda a correção emergencial no primeiro lote
+            self._increase_batch_quantity(corrected_batches, 0, emergency_correction)
+            
+            # Validação final
+            final_stock_evolution = self._simulate_detailed_stock_evolution(corrected_batches, demand_df, initial_stock)
+            final_stockouts = sum(1 for stock in final_stock_evolution.values() if stock < 0)
+            
+            if final_stockouts == 0:
+                print(f"✅ Correção de stockout bem-sucedida - todos os stockouts foram eliminados")
+            else:
+                print(f"⚠️  {final_stockouts} stockouts ainda permanecem após correção máxima")
+        else:
+            print(f"✅ Correção de stockout bem-sucedida na primeira tentativa")
+        
+        # Adicionar informação de correção nos analytics dos lotes modificados
+        self._mark_corrected_batches(corrected_batches, batches, stockout_periods, leadtime_days)
+        
+        return corrected_batches
+    
+    def _increase_batch_quantity(
+        self, 
+        batches: List[BatchResult], 
+        batch_index: int, 
+        increase_amount: float
+    ):
+        """Aumenta a quantidade de um lote específico respeitando limites"""
+        if batch_index >= len(batches) or increase_amount <= 0:
+            return
+        
+        original_quantity = batches[batch_index].quantity
+        new_quantity = original_quantity + increase_amount
+        
+        # Aplicar limite máximo se configurado
+        max_batch_size = getattr(self.params, 'max_batch_size', float('inf'))
+        if new_quantity > max_batch_size:
+            new_quantity = max_batch_size
+            increase_amount = new_quantity - original_quantity
+        
+        # Criar novo lote com quantidade corrigida
+        original_batch = batches[batch_index]
+        corrected_analytics = original_batch.analytics.copy()
+        corrected_analytics['stockout_corrected'] = True
+        corrected_analytics['original_quantity'] = original_quantity
+        corrected_analytics['correction_amount'] = round(increase_amount, 3)
+        corrected_analytics['correction_percentage'] = round((increase_amount / original_quantity) * 100, 1)
+        
+        corrected_batch = BatchResult(
+            order_date=original_batch.order_date,
+            arrival_date=original_batch.arrival_date,
+            quantity=round(new_quantity, 3),
+            analytics=corrected_analytics
+        )
+        
+        batches[batch_index] = corrected_batch
+        
+        print(f"📈 Lote {batch_index + 1}: {original_quantity:.0f} → {new_quantity:.0f} (+{increase_amount:.0f})")
+    
+    def _mark_corrected_batches(
+        self, 
+        corrected_batches: List[BatchResult], 
+        original_batches: List[BatchResult],
+        stockout_periods: List[Dict],
+        leadtime_days: int
+    ):
+        """Marca lotes que foram corrigidos com informações adicionais"""
+        for i, (corrected, original) in enumerate(zip(corrected_batches, original_batches)):
+            if corrected.quantity != original.quantity:
+                # Adicionar informações detalhadas sobre a correção
+                corrected.analytics['stockout_correction_details'] = {
+                    'stockout_periods_detected': len(stockout_periods),
+                    'max_deficit_detected': max(p['deficit'] for p in stockout_periods) if stockout_periods else 0,
+                    'correction_reason': 'automatic_stockout_prevention',
+                    'batch_position': i + 1,
+                    'lead_time_category': self._get_leadtime_category(leadtime_days),
+                    'lead_time_days': leadtime_days
+                }
+    
+    def _get_leadtime_category(self, leadtime_days: int) -> str:
+        """Retorna categoria do lead time para analytics"""
+        if leadtime_days == 0:
+            return 'jit'
+        elif leadtime_days <= 3:
+            return 'short'
+        elif leadtime_days <= 14:
+            return 'medium'
+        else:
+            return 'long'
+    
+    def _simulate_detailed_stock_evolution(
+        self,
+        batches: List[BatchResult],
+        demand_df: pd.DataFrame,
+        initial_stock: float
+    ) -> Dict[str, float]:
+        """
+        Simula evolução detalhada do estoque para detectar stockouts
+        Versão otimizada que foca nos períodos críticos iniciais
+        """
+        if not batches:
+            return {}
+        
+        # Determinar período de simulação focado nos primeiros lotes
+        first_arrival = pd.to_datetime(batches[0].arrival_date)
+        
+        # Se há mais de 3 lotes, simular até o 3º lote + buffer
+        if len(batches) >= 3:
+            third_arrival = pd.to_datetime(batches[2].arrival_date)
+            end_simulation = third_arrival + pd.Timedelta(days=30)
+        else:
+            # Caso contrário, simular por período adequado
+            last_arrival = pd.to_datetime(batches[-1].arrival_date)
+            end_simulation = last_arrival + pd.Timedelta(days=30)
+        
+        # Começar alguns dias antes do primeiro lote para dar contexto
+        start_simulation = max(demand_df.index[0], first_arrival - pd.Timedelta(days=10))
+        
+        # Criar dicionário de chegadas
+        arrivals = {}
+        for batch in batches:
+            arrival_date = batch.arrival_date
+            if arrival_date not in arrivals:
+                arrivals[arrival_date] = 0
+            arrivals[arrival_date] += batch.quantity
+        
+        # Simular evolução do estoque
+        stock_evolution = {}
+        current_stock = initial_stock
+        current_date = start_simulation
+        
+        while current_date <= min(end_simulation, demand_df.index[-1]):
+            date_str = current_date.strftime('%Y-%m-%d')
+            
+            # Adicionar chegadas do dia
+            if date_str in arrivals:
+                current_stock += arrivals[date_str]
+            
+            # Consumir demanda do dia se existir
+            if current_date in demand_df.index:
+                daily_demand = demand_df.loc[current_date, 'demand']
+                current_stock -= daily_demand
+            
+            # Registrar estoque ao final do dia
+            stock_evolution[date_str] = round(current_stock, 2)
+            
+            current_date += pd.Timedelta(days=1)
+        
+        return stock_evolution
     
     def _update_batch_analytics(
         self,
