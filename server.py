@@ -691,7 +691,7 @@ def mrp_optimize():
     - enable_eoq_optimization: Habilitar otimização EOQ (padrão: True)
     - enable_consolidation: Habilitar consolidação de pedidos (padrão: True)
     - ignore_safety_stock: Ignorar completamente estoque de segurança (padrão: False)
-    - exact_quantity_match: Produzir exatamente a demanda sem arredondamentos (padrão: False)
+    - exact_quantity_match: Garantir que estoque total (inicial + produzido) seja exatamente igual à demanda total (padrão: False)
     """
     try:
         data = request.get_json(force=True) or {}
@@ -776,7 +776,7 @@ def mrp_optimize():
             'daily_production_capacity', 'enable_eoq_optimization', 'enable_consolidation',
             'include_extended_analytics',
             'ignore_safety_stock',  # 🎯 NOVO: Ignorar completamente estoque de segurança
-            'exact_quantity_match',  # 🎯 NOVO: Produzir exatamente a demanda sem arredondamentos
+            'exact_quantity_match',  # 🎯 NOVO: Garantir que estoque total (inicial + produzido) seja exatamente igual à demanda total
             'auto_calculate_max_batch_size',  # 🎯 NOVO: Auto-calculation do max_batch_size
             'max_batch_multiplier'  # 🎯 NOVO: Multiplicador do EOQ para auto-calculation
         ]
