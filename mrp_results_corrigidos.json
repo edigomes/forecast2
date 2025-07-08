@@ -1,0 +1,2463 @@
+{
+  "batches": [
+    {
+      "order_date": "2025-07-01",
+      "arrival_date": "2025-07-04",
+      "quantity": 21196.457,
+      "analytics": {
+        "stock_before_arrival": -1371.75,
+        "stock_after_arrival": 19824.71,
+        "coverage_days": 11,
+        "actual_lead_time": 3,
+        "urgency_level": "critical",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 2609.48,
+        "stockout_corrected": true,
+        "original_quantity": 19138.832,
+        "correction_amount": 2057.625,
+        "correction_percentage": 10.8,
+        "stockout_correction_details": {
+          "stockout_periods_detected": 1,
+          "max_deficit_detected": 1371.75,
+          "correction_reason": "automatic_stockout_prevention",
+          "batch_position": 1,
+          "lead_time_category": "short",
+          "lead_time_days": 3
+        },
+        "consumption_since_last_arrival": 5971.85,
+        "estoque_inicial": 4600.1,
+        "estoque_final": 5890.4,
+        "consumo_lote": 19906.16,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-07-08",
+      "arrival_date": "2025-07-11",
+      "quantity": 13934.313,
+      "analytics": {
+        "stock_before_arrival": 5890.4,
+        "stock_after_arrival": 19824.71,
+        "coverage_days": 7,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 6167.9,
+        "consumption_since_last_arrival": 13934.31,
+        "estoque_inicial": 5890.4,
+        "estoque_final": 5890.4,
+        "consumo_lote": 13934.31,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-07-15",
+      "arrival_date": "2025-07-18",
+      "quantity": 13934.313,
+      "analytics": {
+        "stock_before_arrival": 5890.4,
+        "stock_after_arrival": 19824.71,
+        "coverage_days": 7,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 6167.9,
+        "consumption_since_last_arrival": 13934.31,
+        "estoque_inicial": 5890.4,
+        "estoque_final": 5890.4,
+        "consumo_lote": 13934.31,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-07-22",
+      "arrival_date": "2025-07-25",
+      "quantity": 13934.313,
+      "analytics": {
+        "stock_before_arrival": 5890.4,
+        "stock_after_arrival": 19824.71,
+        "coverage_days": 7,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 6167.9,
+        "consumption_since_last_arrival": 13934.31,
+        "estoque_inicial": 5890.4,
+        "estoque_final": 5890.4,
+        "consumo_lote": 13934.31,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-07-29",
+      "arrival_date": "2025-08-01",
+      "quantity": 13934.313,
+      "analytics": {
+        "stock_before_arrival": 5890.4,
+        "stock_after_arrival": 19824.71,
+        "coverage_days": 7,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 6167.9,
+        "consumption_since_last_arrival": 14139.24,
+        "estoque_inicial": 5890.4,
+        "estoque_final": 4455.91,
+        "consumo_lote": 15368.8,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-08-05",
+      "arrival_date": "2025-08-08",
+      "quantity": 14958.945,
+      "analytics": {
+        "stock_before_arrival": 4455.91,
+        "stock_after_arrival": 19414.86,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 5143.27,
+        "consumption_since_last_arrival": 15368.8,
+        "estoque_inicial": 4455.91,
+        "estoque_final": 4046.06,
+        "consumo_lote": 15368.8,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-08-12",
+      "arrival_date": "2025-08-15",
+      "quantity": 15368.798,
+      "analytics": {
+        "stock_before_arrival": 4046.06,
+        "stock_after_arrival": 19414.86,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 4733.42,
+        "consumption_since_last_arrival": 15368.8,
+        "estoque_inicial": 4046.06,
+        "estoque_final": 4046.06,
+        "consumo_lote": 15368.8,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-08-19",
+      "arrival_date": "2025-08-22",
+      "quantity": 15368.798,
+      "analytics": {
+        "stock_before_arrival": 4046.06,
+        "stock_after_arrival": 19414.86,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 4733.42,
+        "consumption_since_last_arrival": 15368.8,
+        "estoque_inicial": 4046.06,
+        "estoque_final": 4046.06,
+        "consumo_lote": 15368.8,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-08-26",
+      "arrival_date": "2025-08-29",
+      "quantity": 15368.798,
+      "analytics": {
+        "stock_before_arrival": 4046.06,
+        "stock_after_arrival": 19414.86,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 4733.42,
+        "consumption_since_last_arrival": 15368.8,
+        "estoque_inicial": 4046.06,
+        "estoque_final": 4184.61,
+        "consumo_lote": 15230.25,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-09-02",
+      "arrival_date": "2025-09-05",
+      "quantity": 15299.522,
+      "analytics": {
+        "stock_before_arrival": 4184.61,
+        "stock_after_arrival": 19484.13,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 4802.69,
+        "consumption_since_last_arrival": 15195.61,
+        "estoque_inicial": 4184.61,
+        "estoque_final": 4357.8,
+        "consumo_lote": 15126.33,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-09-09",
+      "arrival_date": "2025-09-12",
+      "quantity": 15126.33,
+      "analytics": {
+        "stock_before_arrival": 4357.8,
+        "stock_after_arrival": 19484.13,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 4975.89,
+        "consumption_since_last_arrival": 15126.33,
+        "estoque_inicial": 4357.8,
+        "estoque_final": 4357.8,
+        "consumo_lote": 15126.33,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-09-16",
+      "arrival_date": "2025-09-19",
+      "quantity": 15126.33,
+      "analytics": {
+        "stock_before_arrival": 4357.8,
+        "stock_after_arrival": 19484.13,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 4975.89,
+        "consumption_since_last_arrival": 15126.33,
+        "estoque_inicial": 4357.8,
+        "estoque_final": 4357.8,
+        "consumo_lote": 15126.33,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-09-23",
+      "arrival_date": "2025-09-26",
+      "quantity": 15126.33,
+      "analytics": {
+        "stock_before_arrival": 4357.8,
+        "stock_after_arrival": 19484.13,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 4975.89,
+        "consumption_since_last_arrival": 15126.33,
+        "estoque_inicial": 4357.8,
+        "estoque_final": 4720.94,
+        "consumo_lote": 14763.19,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-09-30",
+      "arrival_date": "2025-10-03",
+      "quantity": 15126.33,
+      "analytics": {
+        "stock_before_arrival": 4720.94,
+        "stock_after_arrival": 19847.27,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 4975.89,
+        "consumption_since_last_arrival": 14581.62,
+        "estoque_inicial": 4720.94,
+        "estoque_final": 5991.94,
+        "consumo_lote": 13855.33,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-10-07",
+      "arrival_date": "2025-10-10",
+      "quantity": 13855.333,
+      "analytics": {
+        "stock_before_arrival": 5991.94,
+        "stock_after_arrival": 19847.27,
+        "coverage_days": 7,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 6246.88,
+        "consumption_since_last_arrival": 13855.33,
+        "estoque_inicial": 5991.94,
+        "estoque_final": 5991.94,
+        "consumo_lote": 13855.33,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-10-14",
+      "arrival_date": "2025-10-17",
+      "quantity": 13855.333,
+      "analytics": {
+        "stock_before_arrival": 5991.94,
+        "stock_after_arrival": 19847.27,
+        "coverage_days": 7,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 6246.88,
+        "consumption_since_last_arrival": 13855.33,
+        "estoque_inicial": 5991.94,
+        "estoque_final": 5991.94,
+        "consumo_lote": 13855.33,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-10-21",
+      "arrival_date": "2025-10-24",
+      "quantity": 13855.333,
+      "analytics": {
+        "stock_before_arrival": 5991.94,
+        "stock_after_arrival": 19847.27,
+        "coverage_days": 7,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 6246.88,
+        "consumption_since_last_arrival": 13855.33,
+        "estoque_inicial": 5991.94,
+        "estoque_final": 5991.94,
+        "consumo_lote": 13855.33,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-10-28",
+      "arrival_date": "2025-10-31",
+      "quantity": 13855.333,
+      "analytics": {
+        "stock_before_arrival": 5991.94,
+        "stock_after_arrival": 19847.28,
+        "coverage_days": 7,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 6246.88,
+        "consumption_since_last_arrival": 13855.33,
+        "estoque_inicial": 5991.94,
+        "estoque_final": 5704.54,
+        "consumo_lote": 14142.73,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-11-05",
+      "arrival_date": "2025-11-08",
+      "quantity": 14626.141,
+      "analytics": {
+        "stock_before_arrival": 5704.54,
+        "stock_after_arrival": 20330.68,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 5476.07,
+        "consumption_since_last_arrival": 13901.03,
+        "estoque_inicial": 5704.54,
+        "estoque_final": 6429.66,
+        "consumo_lote": 13901.03,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-11-13",
+      "arrival_date": "2025-11-16",
+      "quantity": 13901.027,
+      "analytics": {
+        "stock_before_arrival": 6429.66,
+        "stock_after_arrival": 20330.68,
+        "coverage_days": 7,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 6201.19,
+        "consumption_since_last_arrival": 13901.03,
+        "estoque_inicial": 6429.66,
+        "estoque_final": 6429.66,
+        "consumo_lote": 13901.03,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-11-21",
+      "arrival_date": "2025-11-24",
+      "quantity": 13901.027,
+      "analytics": {
+        "stock_before_arrival": 6429.66,
+        "stock_after_arrival": 20330.69,
+        "coverage_days": 7,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 6201.19,
+        "consumption_since_last_arrival": 13901.03,
+        "estoque_inicial": 6429.66,
+        "estoque_final": 6718.37,
+        "consumo_lote": 13612.32,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-11-29",
+      "arrival_date": "2025-12-02",
+      "quantity": 13901.027,
+      "analytics": {
+        "stock_before_arrival": 6718.37,
+        "stock_after_arrival": 20619.4,
+        "coverage_days": 7,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 6201.19,
+        "consumption_since_last_arrival": 13323.61,
+        "estoque_inicial": 6718.37,
+        "estoque_final": 6130.22,
+        "consumo_lote": 14489.18,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-12-09",
+      "arrival_date": "2025-12-12",
+      "quantity": 14777.888,
+      "analytics": {
+        "stock_before_arrival": 6130.22,
+        "stock_after_arrival": 20908.11,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 5324.33,
+        "consumption_since_last_arrival": 14489.18,
+        "estoque_inicial": 6130.22,
+        "estoque_final": 6418.93,
+        "consumo_lote": 14489.18,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    },
+    {
+      "order_date": "2025-12-19",
+      "arrival_date": "2025-12-22",
+      "quantity": 14489.177,
+      "analytics": {
+        "stock_before_arrival": 6418.93,
+        "stock_after_arrival": 20908.11,
+        "coverage_days": 8,
+        "actual_lead_time": 3,
+        "urgency_level": "normal",
+        "reorder_point": 6672.77,
+        "safety_stock": 917.29,
+        "current_stock_at_order": 5613.04,
+        "consumption_since_last_arrival": 14489.18,
+        "estoque_inicial": 6418.93,
+        "estoque_final": 6418.93,
+        "consumo_lote": 14489.18,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    }
+  ],
+  "analytics": {
+    "summary": {
+      "initial_stock": 4600.1,
+      "final_stock": 6418.93,
+      "minimum_stock": -1371.75,
+      "minimum_stock_date": "2025-07-03",
+      "stockout_occurred": true,
+      "total_batches": 24,
+      "total_produced": 354821.51,
+      "production_coverage_rate": "101%",
+      "stock_consumed": 0.0
+    },
+    "stock_evolution": {
+      "2025-07-01": 2609.48,
+      "2025-07-02": 618.87,
+      "2025-07-03": -1371.75,
+      "2025-07-04": 17834.09,
+      "2025-07-05": 15843.48,
+      "2025-07-06": 13852.86,
+      "2025-07-07": 11862.24,
+      "2025-07-08": 9871.63,
+      "2025-07-09": 7881.01,
+      "2025-07-10": 5890.4,
+      "2025-07-11": 17834.09,
+      "2025-07-12": 15843.48,
+      "2025-07-13": 13852.86,
+      "2025-07-14": 11862.24,
+      "2025-07-15": 9871.63,
+      "2025-07-16": 7881.01,
+      "2025-07-17": 5890.4,
+      "2025-07-18": 17834.09,
+      "2025-07-19": 15843.48,
+      "2025-07-20": 13852.86,
+      "2025-07-21": 11862.24,
+      "2025-07-22": 9871.63,
+      "2025-07-23": 7881.01,
+      "2025-07-24": 5890.4,
+      "2025-07-25": 17834.09,
+      "2025-07-26": 15843.48,
+      "2025-07-27": 13852.86,
+      "2025-07-28": 11862.24,
+      "2025-07-29": 9871.63,
+      "2025-07-30": 7881.01,
+      "2025-07-31": 5890.4,
+      "2025-08-01": 17629.17,
+      "2025-08-02": 15433.62,
+      "2025-08-03": 13238.08,
+      "2025-08-04": 11042.54,
+      "2025-08-05": 8847.0,
+      "2025-08-06": 6651.45,
+      "2025-08-07": 4455.91,
+      "2025-08-08": 17219.31,
+      "2025-08-09": 15023.77,
+      "2025-08-10": 12828.23,
+      "2025-08-11": 10632.69,
+      "2025-08-12": 8437.14,
+      "2025-08-13": 6241.6,
+      "2025-08-14": 4046.06,
+      "2025-08-15": 17219.31,
+      "2025-08-16": 15023.77,
+      "2025-08-17": 12828.23,
+      "2025-08-18": 10632.69,
+      "2025-08-19": 8437.14,
+      "2025-08-20": 6241.6,
+      "2025-08-21": 4046.06,
+      "2025-08-22": 17219.31,
+      "2025-08-23": 15023.77,
+      "2025-08-24": 12828.23,
+      "2025-08-25": 10632.69,
+      "2025-08-26": 8437.14,
+      "2025-08-27": 6241.6,
+      "2025-08-28": 4046.06,
+      "2025-08-29": 17219.31,
+      "2025-08-30": 15023.77,
+      "2025-08-31": 12828.23,
+      "2025-09-01": 10667.32,
+      "2025-09-02": 8506.42,
+      "2025-09-03": 6345.51,
+      "2025-09-04": 4184.61,
+      "2025-09-05": 17323.23,
+      "2025-09-06": 15162.32,
+      "2025-09-07": 13001.42,
+      "2025-09-08": 10840.52,
+      "2025-09-09": 8679.61,
+      "2025-09-10": 6518.71,
+      "2025-09-11": 4357.8,
+      "2025-09-12": 17323.23,
+      "2025-09-13": 15162.32,
+      "2025-09-14": 13001.42,
+      "2025-09-15": 10840.51,
+      "2025-09-16": 8679.61,
+      "2025-09-17": 6518.71,
+      "2025-09-18": 4357.8,
+      "2025-09-19": 17323.23,
+      "2025-09-20": 15162.32,
+      "2025-09-21": 13001.42,
+      "2025-09-22": 10840.51,
+      "2025-09-23": 8679.61,
+      "2025-09-24": 6518.71,
+      "2025-09-25": 4357.8,
+      "2025-09-26": 17323.23,
+      "2025-09-27": 15162.32,
+      "2025-09-28": 13001.42,
+      "2025-09-29": 10840.51,
+      "2025-09-30": 8679.61,
+      "2025-10-01": 6700.28,
+      "2025-10-02": 4720.94,
+      "2025-10-03": 17867.94,
+      "2025-10-04": 15888.61,
+      "2025-10-05": 13909.27,
+      "2025-10-06": 11929.94,
+      "2025-10-07": 9950.61,
+      "2025-10-08": 7971.27,
+      "2025-10-09": 5991.94,
+      "2025-10-10": 17867.94,
+      "2025-10-11": 15888.61,
+      "2025-10-12": 13909.27,
+      "2025-10-13": 11929.94,
+      "2025-10-14": 9950.61,
+      "2025-10-15": 7971.27,
+      "2025-10-16": 5991.94,
+      "2025-10-17": 17867.94,
+      "2025-10-18": 15888.61,
+      "2025-10-19": 13909.27,
+      "2025-10-20": 11929.94,
+      "2025-10-21": 9950.61,
+      "2025-10-22": 7971.28,
+      "2025-10-23": 5991.94,
+      "2025-10-24": 17867.94,
+      "2025-10-25": 15888.61,
+      "2025-10-26": 13909.28,
+      "2025-10-27": 11929.94,
+      "2025-10-28": 9950.61,
+      "2025-10-29": 7971.28,
+      "2025-10-30": 5991.94,
+      "2025-10-31": 17867.94,
+      "2025-11-01": 16130.31,
+      "2025-11-02": 14392.69,
+      "2025-11-03": 12655.06,
+      "2025-11-04": 10917.43,
+      "2025-11-05": 9179.8,
+      "2025-11-06": 7442.17,
+      "2025-11-07": 5704.54,
+      "2025-11-08": 18593.06,
+      "2025-11-09": 16855.43,
+      "2025-11-10": 15117.8,
+      "2025-11-11": 13380.17,
+      "2025-11-12": 11642.54,
+      "2025-11-13": 9904.91,
+      "2025-11-14": 8167.29,
+      "2025-11-15": 6429.66,
+      "2025-11-16": 18593.06,
+      "2025-11-17": 16855.43,
+      "2025-11-18": 15117.8,
+      "2025-11-19": 13380.17,
+      "2025-11-20": 11642.54,
+      "2025-11-21": 9904.91,
+      "2025-11-22": 8167.29,
+      "2025-11-23": 6429.66,
+      "2025-11-24": 18593.06,
+      "2025-11-25": 16855.43,
+      "2025-11-26": 15117.8,
+      "2025-11-27": 13380.17,
+      "2025-11-28": 11642.54,
+      "2025-11-29": 9904.92,
+      "2025-11-30": 8167.29,
+      "2025-12-01": 6718.37,
+      "2025-12-02": 19170.48,
+      "2025-12-03": 17721.56,
+      "2025-12-04": 16272.64,
+      "2025-12-05": 14823.73,
+      "2025-12-06": 13374.81,
+      "2025-12-07": 11925.89,
+      "2025-12-08": 10476.97,
+      "2025-12-09": 9028.05,
+      "2025-12-10": 7579.14,
+      "2025-12-11": 6130.22,
+      "2025-12-12": 19459.19,
+      "2025-12-13": 18010.27,
+      "2025-12-14": 16561.35,
+      "2025-12-15": 15112.44,
+      "2025-12-16": 13663.52,
+      "2025-12-17": 12214.6,
+      "2025-12-18": 10765.68,
+      "2025-12-19": 9316.76,
+      "2025-12-20": 7867.85,
+      "2025-12-21": 6418.93,
+      "2025-12-22": 19459.19,
+      "2025-12-23": 18010.27,
+      "2025-12-24": 16561.35,
+      "2025-12-25": 15112.44,
+      "2025-12-26": 13663.52,
+      "2025-12-27": 12214.6,
+      "2025-12-28": 10765.68,
+      "2025-12-29": 9316.76,
+      "2025-12-30": 7867.85,
+      "2025-12-31": 6418.93
+    },
+    "critical_points": [
+      {
+        "date": "2025-07-01",
+        "stock": 2609.48,
+        "days_of_coverage": 1.4,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-07-02",
+        "stock": 618.87,
+        "days_of_coverage": 0.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-07-03",
+        "stock": -1371.75,
+        "days_of_coverage": -0.7,
+        "severity": "stockout"
+      },
+      {
+        "date": "2025-07-04",
+        "stock": 17834.09,
+        "days_of_coverage": 9.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-05",
+        "stock": 15843.48,
+        "days_of_coverage": 8.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-06",
+        "stock": 13852.86,
+        "days_of_coverage": 7.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-07",
+        "stock": 11862.24,
+        "days_of_coverage": 6.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-08",
+        "stock": 9871.63,
+        "days_of_coverage": 5.1,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-09",
+        "stock": 7881.01,
+        "days_of_coverage": 4.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-07-10",
+        "stock": 5890.4,
+        "days_of_coverage": 3.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-07-11",
+        "stock": 17834.09,
+        "days_of_coverage": 9.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-12",
+        "stock": 15843.48,
+        "days_of_coverage": 8.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-13",
+        "stock": 13852.86,
+        "days_of_coverage": 7.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-14",
+        "stock": 11862.24,
+        "days_of_coverage": 6.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-15",
+        "stock": 9871.63,
+        "days_of_coverage": 5.1,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-16",
+        "stock": 7881.01,
+        "days_of_coverage": 4.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-07-17",
+        "stock": 5890.4,
+        "days_of_coverage": 3.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-07-18",
+        "stock": 17834.09,
+        "days_of_coverage": 9.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-19",
+        "stock": 15843.48,
+        "days_of_coverage": 8.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-20",
+        "stock": 13852.86,
+        "days_of_coverage": 7.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-21",
+        "stock": 11862.24,
+        "days_of_coverage": 6.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-22",
+        "stock": 9871.63,
+        "days_of_coverage": 5.1,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-23",
+        "stock": 7881.01,
+        "days_of_coverage": 4.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-07-24",
+        "stock": 5890.4,
+        "days_of_coverage": 3.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-07-25",
+        "stock": 17834.09,
+        "days_of_coverage": 9.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-26",
+        "stock": 15843.48,
+        "days_of_coverage": 8.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-27",
+        "stock": 13852.86,
+        "days_of_coverage": 7.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-28",
+        "stock": 11862.24,
+        "days_of_coverage": 6.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-29",
+        "stock": 9871.63,
+        "days_of_coverage": 5.1,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-07-30",
+        "stock": 7881.01,
+        "days_of_coverage": 4.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-07-31",
+        "stock": 5890.4,
+        "days_of_coverage": 3.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-01",
+        "stock": 17629.17,
+        "days_of_coverage": 9.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-02",
+        "stock": 15433.62,
+        "days_of_coverage": 8.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-03",
+        "stock": 13238.08,
+        "days_of_coverage": 6.9,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-04",
+        "stock": 11042.54,
+        "days_of_coverage": 5.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-05",
+        "stock": 8847.0,
+        "days_of_coverage": 4.6,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-06",
+        "stock": 6651.45,
+        "days_of_coverage": 3.5,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-07",
+        "stock": 4455.91,
+        "days_of_coverage": 2.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-08",
+        "stock": 17219.31,
+        "days_of_coverage": 9.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-09",
+        "stock": 15023.77,
+        "days_of_coverage": 7.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-10",
+        "stock": 12828.23,
+        "days_of_coverage": 6.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-11",
+        "stock": 10632.69,
+        "days_of_coverage": 5.5,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-12",
+        "stock": 8437.14,
+        "days_of_coverage": 4.4,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-13",
+        "stock": 6241.6,
+        "days_of_coverage": 3.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-14",
+        "stock": 4046.06,
+        "days_of_coverage": 2.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-15",
+        "stock": 17219.31,
+        "days_of_coverage": 9.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-16",
+        "stock": 15023.77,
+        "days_of_coverage": 7.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-17",
+        "stock": 12828.23,
+        "days_of_coverage": 6.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-18",
+        "stock": 10632.69,
+        "days_of_coverage": 5.5,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-19",
+        "stock": 8437.14,
+        "days_of_coverage": 4.4,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-20",
+        "stock": 6241.6,
+        "days_of_coverage": 3.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-21",
+        "stock": 4046.06,
+        "days_of_coverage": 2.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-22",
+        "stock": 17219.31,
+        "days_of_coverage": 9.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-23",
+        "stock": 15023.77,
+        "days_of_coverage": 7.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-24",
+        "stock": 12828.23,
+        "days_of_coverage": 6.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-25",
+        "stock": 10632.69,
+        "days_of_coverage": 5.5,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-26",
+        "stock": 8437.14,
+        "days_of_coverage": 4.4,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-27",
+        "stock": 6241.6,
+        "days_of_coverage": 3.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-28",
+        "stock": 4046.06,
+        "days_of_coverage": 2.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-08-29",
+        "stock": 17219.31,
+        "days_of_coverage": 9.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-30",
+        "stock": 15023.77,
+        "days_of_coverage": 7.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-08-31",
+        "stock": 12828.23,
+        "days_of_coverage": 6.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-01",
+        "stock": 10667.32,
+        "days_of_coverage": 5.6,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-02",
+        "stock": 8506.42,
+        "days_of_coverage": 4.4,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-03",
+        "stock": 6345.51,
+        "days_of_coverage": 3.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-04",
+        "stock": 4184.61,
+        "days_of_coverage": 2.2,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-05",
+        "stock": 17323.23,
+        "days_of_coverage": 9.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-06",
+        "stock": 15162.32,
+        "days_of_coverage": 7.9,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-07",
+        "stock": 13001.42,
+        "days_of_coverage": 6.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-08",
+        "stock": 10840.52,
+        "days_of_coverage": 5.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-09",
+        "stock": 8679.61,
+        "days_of_coverage": 4.5,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-10",
+        "stock": 6518.71,
+        "days_of_coverage": 3.4,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-11",
+        "stock": 4357.8,
+        "days_of_coverage": 2.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-12",
+        "stock": 17323.23,
+        "days_of_coverage": 9.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-13",
+        "stock": 15162.32,
+        "days_of_coverage": 7.9,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-14",
+        "stock": 13001.42,
+        "days_of_coverage": 6.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-15",
+        "stock": 10840.51,
+        "days_of_coverage": 5.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-16",
+        "stock": 8679.61,
+        "days_of_coverage": 4.5,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-17",
+        "stock": 6518.71,
+        "days_of_coverage": 3.4,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-18",
+        "stock": 4357.8,
+        "days_of_coverage": 2.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-19",
+        "stock": 17323.23,
+        "days_of_coverage": 9.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-20",
+        "stock": 15162.32,
+        "days_of_coverage": 7.9,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-21",
+        "stock": 13001.42,
+        "days_of_coverage": 6.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-22",
+        "stock": 10840.51,
+        "days_of_coverage": 5.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-23",
+        "stock": 8679.61,
+        "days_of_coverage": 4.5,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-24",
+        "stock": 6518.71,
+        "days_of_coverage": 3.4,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-25",
+        "stock": 4357.8,
+        "days_of_coverage": 2.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-09-26",
+        "stock": 17323.23,
+        "days_of_coverage": 9.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-27",
+        "stock": 15162.32,
+        "days_of_coverage": 7.9,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-28",
+        "stock": 13001.42,
+        "days_of_coverage": 6.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-29",
+        "stock": 10840.51,
+        "days_of_coverage": 5.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-09-30",
+        "stock": 8679.61,
+        "days_of_coverage": 4.5,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-10-01",
+        "stock": 6700.28,
+        "days_of_coverage": 3.5,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-10-02",
+        "stock": 4720.94,
+        "days_of_coverage": 2.5,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-10-03",
+        "stock": 17867.94,
+        "days_of_coverage": 9.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-04",
+        "stock": 15888.61,
+        "days_of_coverage": 8.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-05",
+        "stock": 13909.27,
+        "days_of_coverage": 7.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-06",
+        "stock": 11929.94,
+        "days_of_coverage": 6.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-07",
+        "stock": 9950.61,
+        "days_of_coverage": 5.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-08",
+        "stock": 7971.27,
+        "days_of_coverage": 4.2,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-10-09",
+        "stock": 5991.94,
+        "days_of_coverage": 3.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-10-10",
+        "stock": 17867.94,
+        "days_of_coverage": 9.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-11",
+        "stock": 15888.61,
+        "days_of_coverage": 8.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-12",
+        "stock": 13909.27,
+        "days_of_coverage": 7.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-13",
+        "stock": 11929.94,
+        "days_of_coverage": 6.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-14",
+        "stock": 9950.61,
+        "days_of_coverage": 5.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-15",
+        "stock": 7971.27,
+        "days_of_coverage": 4.2,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-10-16",
+        "stock": 5991.94,
+        "days_of_coverage": 3.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-10-17",
+        "stock": 17867.94,
+        "days_of_coverage": 9.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-18",
+        "stock": 15888.61,
+        "days_of_coverage": 8.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-19",
+        "stock": 13909.27,
+        "days_of_coverage": 7.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-20",
+        "stock": 11929.94,
+        "days_of_coverage": 6.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-21",
+        "stock": 9950.61,
+        "days_of_coverage": 5.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-22",
+        "stock": 7971.28,
+        "days_of_coverage": 4.2,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-10-23",
+        "stock": 5991.94,
+        "days_of_coverage": 3.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-10-24",
+        "stock": 17867.94,
+        "days_of_coverage": 9.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-25",
+        "stock": 15888.61,
+        "days_of_coverage": 8.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-26",
+        "stock": 13909.28,
+        "days_of_coverage": 7.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-27",
+        "stock": 11929.94,
+        "days_of_coverage": 6.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-28",
+        "stock": 9950.61,
+        "days_of_coverage": 5.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-10-29",
+        "stock": 7971.28,
+        "days_of_coverage": 4.2,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-10-30",
+        "stock": 5991.94,
+        "days_of_coverage": 3.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-10-31",
+        "stock": 17867.94,
+        "days_of_coverage": 9.3,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-01",
+        "stock": 16130.31,
+        "days_of_coverage": 8.4,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-02",
+        "stock": 14392.69,
+        "days_of_coverage": 7.5,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-03",
+        "stock": 12655.06,
+        "days_of_coverage": 6.6,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-04",
+        "stock": 10917.43,
+        "days_of_coverage": 5.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-05",
+        "stock": 9179.8,
+        "days_of_coverage": 4.8,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-11-06",
+        "stock": 7442.17,
+        "days_of_coverage": 3.9,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-11-07",
+        "stock": 5704.54,
+        "days_of_coverage": 3.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-11-08",
+        "stock": 18593.06,
+        "days_of_coverage": 9.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-09",
+        "stock": 16855.43,
+        "days_of_coverage": 8.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-10",
+        "stock": 15117.8,
+        "days_of_coverage": 7.9,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-11",
+        "stock": 13380.17,
+        "days_of_coverage": 7.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-12",
+        "stock": 11642.54,
+        "days_of_coverage": 6.1,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-13",
+        "stock": 9904.91,
+        "days_of_coverage": 5.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-14",
+        "stock": 8167.29,
+        "days_of_coverage": 4.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-11-15",
+        "stock": 6429.66,
+        "days_of_coverage": 3.4,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-11-16",
+        "stock": 18593.06,
+        "days_of_coverage": 9.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-17",
+        "stock": 16855.43,
+        "days_of_coverage": 8.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-18",
+        "stock": 15117.8,
+        "days_of_coverage": 7.9,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-19",
+        "stock": 13380.17,
+        "days_of_coverage": 7.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-20",
+        "stock": 11642.54,
+        "days_of_coverage": 6.1,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-21",
+        "stock": 9904.91,
+        "days_of_coverage": 5.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-22",
+        "stock": 8167.29,
+        "days_of_coverage": 4.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-11-23",
+        "stock": 6429.66,
+        "days_of_coverage": 3.4,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-11-24",
+        "stock": 18593.06,
+        "days_of_coverage": 9.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-25",
+        "stock": 16855.43,
+        "days_of_coverage": 8.8,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-26",
+        "stock": 15117.8,
+        "days_of_coverage": 7.9,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-27",
+        "stock": 13380.17,
+        "days_of_coverage": 7.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-28",
+        "stock": 11642.54,
+        "days_of_coverage": 6.1,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-29",
+        "stock": 9904.92,
+        "days_of_coverage": 5.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-11-30",
+        "stock": 8167.29,
+        "days_of_coverage": 4.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-01",
+        "stock": 6718.37,
+        "days_of_coverage": 3.5,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-03",
+        "stock": 17721.56,
+        "days_of_coverage": 9.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-04",
+        "stock": 16272.64,
+        "days_of_coverage": 8.5,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-05",
+        "stock": 14823.73,
+        "days_of_coverage": 7.7,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-06",
+        "stock": 13374.81,
+        "days_of_coverage": 7.0,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-07",
+        "stock": 11925.89,
+        "days_of_coverage": 6.2,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-08",
+        "stock": 10476.97,
+        "days_of_coverage": 5.5,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-09",
+        "stock": 9028.05,
+        "days_of_coverage": 4.7,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-10",
+        "stock": 7579.14,
+        "days_of_coverage": 4.0,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-11",
+        "stock": 6130.22,
+        "days_of_coverage": 3.2,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-13",
+        "stock": 18010.27,
+        "days_of_coverage": 9.4,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-14",
+        "stock": 16561.35,
+        "days_of_coverage": 8.6,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-15",
+        "stock": 15112.44,
+        "days_of_coverage": 7.9,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-16",
+        "stock": 13663.52,
+        "days_of_coverage": 7.1,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-17",
+        "stock": 12214.6,
+        "days_of_coverage": 6.4,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-18",
+        "stock": 10765.68,
+        "days_of_coverage": 5.6,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-19",
+        "stock": 9316.76,
+        "days_of_coverage": 4.9,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-20",
+        "stock": 7867.85,
+        "days_of_coverage": 4.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-21",
+        "stock": 6418.93,
+        "days_of_coverage": 3.3,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-23",
+        "stock": 18010.27,
+        "days_of_coverage": 9.4,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-24",
+        "stock": 16561.35,
+        "days_of_coverage": 8.6,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-25",
+        "stock": 15112.44,
+        "days_of_coverage": 7.9,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-26",
+        "stock": 13663.52,
+        "days_of_coverage": 7.1,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-27",
+        "stock": 12214.6,
+        "days_of_coverage": 6.4,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-28",
+        "stock": 10765.68,
+        "days_of_coverage": 5.6,
+        "severity": "warning"
+      },
+      {
+        "date": "2025-12-29",
+        "stock": 9316.76,
+        "days_of_coverage": 4.9,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-30",
+        "stock": 7867.85,
+        "days_of_coverage": 4.1,
+        "severity": "critical"
+      },
+      {
+        "date": "2025-12-31",
+        "stock": 6418.93,
+        "days_of_coverage": 3.3,
+        "severity": "critical"
+      }
+    ],
+    "production_efficiency": {
+      "average_batch_size": 14784.23,
+      "production_line_utilization": 39.34,
+      "production_gaps": [
+        {
+          "from_batch": 1,
+          "to_batch": 2,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 2,
+          "to_batch": 3,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 3,
+          "to_batch": 4,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 4,
+          "to_batch": 5,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 5,
+          "to_batch": 6,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 6,
+          "to_batch": 7,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 7,
+          "to_batch": 8,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 8,
+          "to_batch": 9,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 9,
+          "to_batch": 10,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 10,
+          "to_batch": 11,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 11,
+          "to_batch": 12,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 12,
+          "to_batch": 13,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 13,
+          "to_batch": 14,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 14,
+          "to_batch": 15,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 15,
+          "to_batch": 16,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 16,
+          "to_batch": 17,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 17,
+          "to_batch": 18,
+          "gap_days": 4,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 18,
+          "to_batch": 19,
+          "gap_days": 5,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 19,
+          "to_batch": 20,
+          "gap_days": 5,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 20,
+          "to_batch": 21,
+          "gap_days": 5,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 21,
+          "to_batch": 22,
+          "gap_days": 5,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 22,
+          "to_batch": 23,
+          "gap_days": 7,
+          "gap_type": "idle"
+        },
+        {
+          "from_batch": 23,
+          "to_batch": 24,
+          "gap_days": 7,
+          "gap_type": "idle"
+        }
+      ],
+      "lead_time_compliance": 100
+    },
+    "demand_analysis": {
+      "total_demand": 353002.68,
+      "average_daily_demand": 1918.49,
+      "demand_by_month": {
+        "2025-07": 61709.1,
+        "2025-08": 68061.82,
+        "2025-09": 64827.13,
+        "2025-10": 61359.33,
+        "2025-11": 52128.85,
+        "2025-12": 44916.45
+      },
+      "period_days": 184
+    },
+    "stock_end_of_period": {
+      "monthly": [
+        {
+          "period": "2025-07",
+          "end_date": "2025-07-31",
+          "stock": 5890.4,
+          "days_of_coverage": 3.1
+        },
+        {
+          "period": "2025-08",
+          "end_date": "2025-08-31",
+          "stock": 12828.23,
+          "days_of_coverage": 6.7
+        },
+        {
+          "period": "2025-09",
+          "end_date": "2025-09-30",
+          "stock": 8679.61,
+          "days_of_coverage": 4.5
+        },
+        {
+          "period": "2025-10",
+          "end_date": "2025-10-31",
+          "stock": 17867.94,
+          "days_of_coverage": 9.3
+        },
+        {
+          "period": "2025-11",
+          "end_date": "2025-11-30",
+          "stock": 8167.29,
+          "days_of_coverage": 4.3
+        },
+        {
+          "period": "2025-12",
+          "end_date": "2025-12-31",
+          "stock": 6418.93,
+          "days_of_coverage": 3.3
+        }
+      ],
+      "after_batch_arrival": [
+        {
+          "batch_number": 1,
+          "date": "2025-07-04",
+          "stock_before": -1371.75,
+          "batch_quantity": 21196.457,
+          "stock_after": 17834.09,
+          "coverage_gained": 11
+        },
+        {
+          "batch_number": 2,
+          "date": "2025-07-11",
+          "stock_before": 5890.4,
+          "batch_quantity": 13934.313,
+          "stock_after": 17834.09,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 3,
+          "date": "2025-07-18",
+          "stock_before": 5890.4,
+          "batch_quantity": 13934.313,
+          "stock_after": 17834.09,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 4,
+          "date": "2025-07-25",
+          "stock_before": 5890.4,
+          "batch_quantity": 13934.313,
+          "stock_after": 17834.09,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 5,
+          "date": "2025-08-01",
+          "stock_before": 5890.4,
+          "batch_quantity": 13934.313,
+          "stock_after": 17629.17,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 6,
+          "date": "2025-08-08",
+          "stock_before": 4455.91,
+          "batch_quantity": 14958.945,
+          "stock_after": 17219.31,
+          "coverage_gained": 8
+        },
+        {
+          "batch_number": 7,
+          "date": "2025-08-15",
+          "stock_before": 4046.06,
+          "batch_quantity": 15368.798,
+          "stock_after": 17219.31,
+          "coverage_gained": 8
+        },
+        {
+          "batch_number": 8,
+          "date": "2025-08-22",
+          "stock_before": 4046.06,
+          "batch_quantity": 15368.798,
+          "stock_after": 17219.31,
+          "coverage_gained": 8
+        },
+        {
+          "batch_number": 9,
+          "date": "2025-08-29",
+          "stock_before": 4046.06,
+          "batch_quantity": 15368.798,
+          "stock_after": 17219.31,
+          "coverage_gained": 8
+        },
+        {
+          "batch_number": 10,
+          "date": "2025-09-05",
+          "stock_before": 4184.61,
+          "batch_quantity": 15299.522,
+          "stock_after": 17323.23,
+          "coverage_gained": 8
+        },
+        {
+          "batch_number": 11,
+          "date": "2025-09-12",
+          "stock_before": 4357.8,
+          "batch_quantity": 15126.33,
+          "stock_after": 17323.23,
+          "coverage_gained": 8
+        },
+        {
+          "batch_number": 12,
+          "date": "2025-09-19",
+          "stock_before": 4357.8,
+          "batch_quantity": 15126.33,
+          "stock_after": 17323.23,
+          "coverage_gained": 8
+        },
+        {
+          "batch_number": 13,
+          "date": "2025-09-26",
+          "stock_before": 4357.8,
+          "batch_quantity": 15126.33,
+          "stock_after": 17323.23,
+          "coverage_gained": 8
+        },
+        {
+          "batch_number": 14,
+          "date": "2025-10-03",
+          "stock_before": 4720.94,
+          "batch_quantity": 15126.33,
+          "stock_after": 17867.94,
+          "coverage_gained": 8
+        },
+        {
+          "batch_number": 15,
+          "date": "2025-10-10",
+          "stock_before": 5991.94,
+          "batch_quantity": 13855.333,
+          "stock_after": 17867.94,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 16,
+          "date": "2025-10-17",
+          "stock_before": 5991.94,
+          "batch_quantity": 13855.333,
+          "stock_after": 17867.94,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 17,
+          "date": "2025-10-24",
+          "stock_before": 5991.94,
+          "batch_quantity": 13855.333,
+          "stock_after": 17867.94,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 18,
+          "date": "2025-10-31",
+          "stock_before": 5991.94,
+          "batch_quantity": 13855.333,
+          "stock_after": 17867.94,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 19,
+          "date": "2025-11-08",
+          "stock_before": 5704.54,
+          "batch_quantity": 14626.141,
+          "stock_after": 18593.06,
+          "coverage_gained": 8
+        },
+        {
+          "batch_number": 20,
+          "date": "2025-11-16",
+          "stock_before": 6429.66,
+          "batch_quantity": 13901.027,
+          "stock_after": 18593.06,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 21,
+          "date": "2025-11-24",
+          "stock_before": 6429.66,
+          "batch_quantity": 13901.027,
+          "stock_after": 18593.06,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 22,
+          "date": "2025-12-02",
+          "stock_before": 6718.37,
+          "batch_quantity": 13901.027,
+          "stock_after": 19170.48,
+          "coverage_gained": 7
+        },
+        {
+          "batch_number": 23,
+          "date": "2025-12-12",
+          "stock_before": 6130.22,
+          "batch_quantity": 14777.888,
+          "stock_after": 19459.19,
+          "coverage_gained": 8
+        },
+        {
+          "batch_number": 24,
+          "date": "2025-12-22",
+          "stock_before": 6418.93,
+          "batch_quantity": 14489.177,
+          "stock_after": 19459.19,
+          "coverage_gained": 8
+        }
+      ],
+      "before_batch_arrival": [
+        {
+          "before_batch": 2,
+          "date": "2025-07-10",
+          "stock": 5890.4,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 3,
+          "date": "2025-07-17",
+          "stock": 5890.4,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 4,
+          "date": "2025-07-24",
+          "stock": 5890.4,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 5,
+          "date": "2025-07-31",
+          "stock": 5890.4,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 6,
+          "date": "2025-08-07",
+          "stock": 4455.91,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 7,
+          "date": "2025-08-14",
+          "stock": 4046.06,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 8,
+          "date": "2025-08-21",
+          "stock": 4046.06,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 9,
+          "date": "2025-08-28",
+          "stock": 4046.06,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 10,
+          "date": "2025-09-04",
+          "stock": 4184.61,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 11,
+          "date": "2025-09-11",
+          "stock": 4357.8,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 12,
+          "date": "2025-09-18",
+          "stock": 4357.8,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 13,
+          "date": "2025-09-25",
+          "stock": 4357.8,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 14,
+          "date": "2025-10-02",
+          "stock": 4720.94,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 15,
+          "date": "2025-10-09",
+          "stock": 5991.94,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 16,
+          "date": "2025-10-16",
+          "stock": 5991.94,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 17,
+          "date": "2025-10-23",
+          "stock": 5991.94,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 18,
+          "date": "2025-10-30",
+          "stock": 5991.94,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 19,
+          "date": "2025-11-07",
+          "stock": 5704.54,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 20,
+          "date": "2025-11-15",
+          "stock": 6429.66,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 21,
+          "date": "2025-11-23",
+          "stock": 6429.66,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 22,
+          "date": "2025-12-01",
+          "stock": 6718.37,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 23,
+          "date": "2025-12-11",
+          "stock": 6130.22,
+          "days_until_arrival": 1
+        },
+        {
+          "before_batch": 24,
+          "date": "2025-12-21",
+          "stock": 6418.93,
+          "days_until_arrival": 1
+        }
+      ]
+    },
+    "order_dates": [
+      "2025-07-01",
+      "2025-07-08",
+      "2025-07-15",
+      "2025-07-22",
+      "2025-07-29",
+      "2025-08-05",
+      "2025-08-12",
+      "2025-08-19",
+      "2025-08-26",
+      "2025-09-02",
+      "2025-09-09",
+      "2025-09-16",
+      "2025-09-23",
+      "2025-09-30",
+      "2025-10-07",
+      "2025-10-14",
+      "2025-10-21",
+      "2025-10-28",
+      "2025-11-05",
+      "2025-11-13",
+      "2025-11-21",
+      "2025-11-29",
+      "2025-12-09",
+      "2025-12-19"
+    ],
+    "extended_analytics": {
+      "performance_metrics": {
+        "realized_service_level": 99.46,
+        "inventory_turnover": 30.53,
+        "average_days_of_inventory": 6.0,
+        "setup_frequency": 24,
+        "average_batch_size": 14784.23,
+        "stock_variability_cv": 0.381,
+        "perfect_order_rate": 95.83
+      },
+      "cost_analysis": {
+        "total_cost": 96018077.42,
+        "setup_cost": 6000.0,
+        "holding_cost": 87436.12,
+        "stockout_cost": 95924641.3,
+        "cost_breakdown_percentage": {
+          "setup": 0.0,
+          "holding": 0.1,
+          "stockout": 99.9
+        }
+      },
+      "optimization_metrics": {
+        "theoretical_eoq": 4831.32,
+        "actual_average_batch": 14784.23,
+        "eoq_adherence_rate": -106.01,
+        "consolidation_savings": 0.0,
+        "optimal_review_period": 5,
+        "batches_vs_optimal": {
+          "actual_batches": 24,
+          "optimal_batches": 73.1,
+          "efficiency": 32.85
+        }
+      },
+      "risk_analysis": {
+        "stockout_risk": {
+          "probability": 0.54,
+          "expected_stockouts_per_year": 2.0,
+          "average_days_to_stockout": 3.4,
+          "severity": "low"
+        },
+        "inventory_risk": {
+          "var_95": 4372.52,
+          "cvar_95": 3125.28,
+          "min_stock_as_days": -0.7,
+          "volatility": 4410.83
+        },
+        "demand_uncertainty": {
+          "coefficient_of_variation": 0.134,
+          "predictability": "high",
+          "forecast_error_impact": 505.42
+        }
+      },
+      "seasonality_analysis": {
+        "seasonality_detected": false,
+        "weekly_pattern": {
+          "Segunda": 0.996,
+          "Terça": 0.997,
+          "Quarta": 0.994,
+          "Quinta": 1.003,
+          "Sexta": 1.007,
+          "Sábado": 1.002,
+          "Domingo": 1.002
+        },
+        "peak_day": "Sexta",
+        "low_day": "Quarta",
+        "trend": {
+          "direction": "decreasing",
+          "strength": 0.002,
+          "monthly_growth_rate": -6.04
+        }
+      },
+      "recommendations": [],
+      "what_if_scenarios": {
+        "demand_increase_20%": {
+          "additional_stock_needed": 280.24,
+          "additional_orders_per_month": 2.3,
+          "cost_impact": 2800999.53
+        },
+        "leadtime_reduction_50%": {
+          "safety_stock_reduction": 483.89,
+          "working_capital_freed": 48389.21,
+          "flexibility_improvement": "Alta - resposta 50% mais rápida a mudanças de demanda"
+        },
+        "perfect_forecast": {
+          "safety_stock_elimination": 1401.18,
+          "cost_savings": 28023.58,
+          "feasibility": "Baixa - considere melhorias incrementais na previsão"
+        }
+      },
+      "optimization_parameters_used": {
+        "setup_cost": 250.0,
+        "holding_cost_rate": 0.15,
+        "service_level_target": 0.98,
+        "consolidation_enabled": true,
+        "eoq_optimization_enabled": true,
+        "strategy_used": "Short Lead Time Consolidation"
+      }
+    }
+  }
+}

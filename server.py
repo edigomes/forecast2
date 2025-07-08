@@ -1000,7 +1000,7 @@ def mrp_sporadic():
         # Log dos parâmetros específicos
         logger.info("PARÂMETROS ESPECÍFICOS DE DEMANDA ESPORÁDICA:")
         logger.info(f"  safety_margin_percent: {safety_margin_percent}%")
-        logger.info(f"  safety_days: {safety_days}")
+        logger.info(f"  🎯 safety_days: {safety_days} (deve antecipar demandas em X dias)")
         logger.info(f"  minimum_stock_percent: {minimum_stock_percent}%")
         logger.info(f"  max_gap_days: {max_gap_days}")
         
@@ -1135,6 +1135,10 @@ def mrp_advanced():
     - Múltiplas estratégias de planejamento
     - Analytics estendidos com métricas de performance
     - Integração com supplychainpy (quando disponível)
+    
+    Parâmetros especiais:
+    - ignore_safety_stock: bool (padrão: False) - Se True, ignora completamente 
+      estoque de segurança e permite que o estoque chegue próximo de zero
     """
     try:
         data = request.get_json(force=True) or {}
@@ -1274,6 +1278,9 @@ def mrp_advanced():
             if optimization_params.max_batch_multiplier < 1.0 or optimization_params.max_batch_multiplier > 10.0:
                 return jsonify({"error": "max_batch_multiplier deve estar entre 1.0 e 10.0"}), 400
         
+        # 🎯 NOVO: Parâmetro para ignorar completamente estoque de segurança
+        ignore_safety_stock = data.get('ignore_safety_stock', False)
+        
         # Parâmetro para habilitar analytics estendidos (padrão: True para endpoint avançado)
         include_extended_analytics = data.get('include_extended_analytics', True)
         
@@ -1288,6 +1295,7 @@ def mrp_advanced():
         logger.info(f"  min_consolidation_benefit: {optimization_params.min_consolidation_benefit}")
         logger.info(f"  🎯 auto_calculate_max_batch_size: {optimization_params.auto_calculate_max_batch_size}")
         logger.info(f"  🎯 max_batch_multiplier: {optimization_params.max_batch_multiplier}")
+        logger.info(f"  🎯 ignore_safety_stock: {ignore_safety_stock}")
         logger.info(f"  include_extended_analytics: {include_extended_analytics}")
         
         # Análise prévia das demandas
@@ -1337,6 +1345,7 @@ def mrp_advanced():
             safety_days=safety_days,
             minimum_stock_percent=minimum_stock_percent,
             max_gap_days=max_gap_days,
+            ignore_safety_stock=ignore_safety_stock,
             include_extended_analytics=include_extended_analytics
         )
         

@@ -1,209 +1,109 @@
 {
     "batches": [
         {
-            "order_date": "2025-06-16",
-            "arrival_date": "2025-06-21",
-            "quantity": 200.0,
+            "order_date": "2025-06-21",
+            "arrival_date": "2025-06-26",
+            "quantity": 5720.31,
             "analytics": {
                 "stock_before_arrival": 0.0,
-                "stock_after_arrival": 200.0,
-                "consumption_since_last_arrival": 0,
-                "coverage_days": 52,
+                "stock_after_arrival": 5720.31,
+                "coverage_days": 6,
                 "actual_lead_time": 5,
-                "urgency_level": "high",
+                "urgency_level": "normal",
                 "production_start_delay": 0,
                 "arrival_delay": 0,
-                "target_demand_date": "2025-06-21",
-                "target_demand_quantity": 0.000102,
-                "shortfall_covered": 0.0,
+                "target_demand_date": "2025-07-01",
+                "target_demand_quantity": 5720.31,
+                "shortfall_covered": 5720.31,
+                "safety_margin_percent": 0.0,
+                "exact_quantity_mode": true,
+                "ignore_safety_stock_applied": true,
                 "demands_covered": [
                     {
-                        "date": "2025-06-21",
-                        "quantity": 0.0
-                    },
-                    {
-                        "date": "2025-08-11",
-                        "quantity": 0.0
+                        "date": "2025-07-01",
+                        "quantity": 5720.31
                     }
                 ],
-                "coverage_count": 2,
+                "coverage_count": 1,
                 "is_critical": false,
                 "safety_margin_days": 0,
-                "efficiency_ratio": 1961891.44,
-                "advanced_mrp_strategy": "short_leadtime_sporadic",
-                "eoq_used": 237.6,
-                "safety_stock_calculated": 0,
-                "reorder_point_used": 0.0,
-                "service_level_z_score": 2.054,
-                "abc_classification": "C",
-                "xyz_classification": "X",
-                "demand_variability_cv": 0.0,
-                "demand_regularity_score": 1.0,
-                "seasonality_detected": false,
-                "trend_direction": "stable",
-                "holding_cost_impact": 54.79,
-                "setup_cost_allocation": 500.0,
-                "total_cost_estimated": 554.79,
-                "optimization_quality": "excellent",
-                "strategy_shortage_covered": 0.000102,
-                "strategy_safety_buffer": 0,
-                "strategy_next_demand_qty": 0.000102,
-                "strategy_buffer_needed": 0.000102,
-                "strategy_base_quantity": 0.000143,
-                "strategy_proactive_planning": true,
-                "strategy_timing_optimized": true,
-                "strategy_demand_coverage": 100.0,
-                "strategy_lead_time_days": 5
+                "efficiency_ratio": 0
             }
         }
     ],
     "analytics": {
         "summary": {
             "initial_stock": 0.0,
-            "final_stock": 200.0,
+            "final_stock": 0.0,
             "minimum_stock": 0.0,
-            "minimum_stock_date": "2025-06-11",
+            "minimum_stock_date": "2025-06-16",
             "stockout_occurred": false,
             "total_batches": 1,
-            "total_produced": 200.0,
-            "production_coverage_rate": "98094572%",
-            "stock_consumed": 0.0,
-            "demand_fulfillment_rate": 100.0,
-            "demands_met_count": 2,
-            "demands_unmet_count": 0,
-            "unmet_demand_details": [],
-            "average_batch_per_demand": 0.5
+            "total_produced": 5720.31,
+            "production_coverage_rate": "100%",
+            "stock_consumed": 5720.31,
+            "demand_fulfillment_rate": 0.0,
+            "demands_met_count": 0,
+            "demands_unmet_count": 1,
+            "unmet_demand_details": [
+                {
+                    "date": "2025-07-01",
+                    "demand": 5720.31,
+                    "available_stock": 0,
+                    "shortage": 5720.31
+                }
+            ],
+            "average_batch_per_demand": 1.0
         },
         "stock_evolution": {
-            "2025-06-11": 0.0,
-            "2025-06-12": 0.0,
-            "2025-06-13": 0.0,
-            "2025-06-14": 0.0,
-            "2025-06-15": 0.0,
             "2025-06-16": 0.0,
             "2025-06-17": 0.0,
             "2025-06-18": 0.0,
             "2025-06-19": 0.0,
             "2025-06-20": 0.0,
-            "2025-06-21": 200.0,
-            "2025-06-22": 200.0,
-            "2025-06-23": 200.0,
-            "2025-06-24": 200.0,
-            "2025-06-25": 200.0,
-            "2025-06-26": 200.0,
-            "2025-06-27": 200.0,
-            "2025-06-28": 200.0,
-            "2025-06-29": 200.0,
-            "2025-06-30": 200.0,
-            "2025-07-01": 200.0,
-            "2025-07-02": 200.0,
-            "2025-07-03": 200.0,
-            "2025-07-04": 200.0,
-            "2025-07-05": 200.0,
-            "2025-07-06": 200.0,
-            "2025-07-07": 200.0,
-            "2025-07-08": 200.0,
-            "2025-07-09": 200.0,
-            "2025-07-10": 200.0,
-            "2025-07-11": 200.0,
-            "2025-07-12": 200.0,
-            "2025-07-13": 200.0,
-            "2025-07-14": 200.0,
-            "2025-07-15": 200.0,
-            "2025-07-16": 200.0,
-            "2025-07-17": 200.0,
-            "2025-07-18": 200.0,
-            "2025-07-19": 200.0,
-            "2025-07-20": 200.0,
-            "2025-07-21": 200.0,
-            "2025-07-22": 200.0,
-            "2025-07-23": 200.0,
-            "2025-07-24": 200.0,
-            "2025-07-25": 200.0,
-            "2025-07-26": 200.0,
-            "2025-07-27": 200.0,
-            "2025-07-28": 200.0,
-            "2025-07-29": 200.0,
-            "2025-07-30": 200.0,
-            "2025-07-31": 200.0,
-            "2025-08-01": 200.0,
-            "2025-08-02": 200.0,
-            "2025-08-03": 200.0,
-            "2025-08-04": 200.0,
-            "2025-08-05": 200.0,
-            "2025-08-06": 200.0,
-            "2025-08-07": 200.0,
-            "2025-08-08": 200.0,
-            "2025-08-09": 200.0,
-            "2025-08-10": 200.0,
-            "2025-08-11": 200.0,
-            "2025-08-12": 200.0,
-            "2025-08-13": 200.0,
-            "2025-08-14": 200.0,
-            "2025-08-15": 200.0,
-            "2025-08-16": 200.0,
-            "2025-08-17": 200.0,
-            "2025-08-18": 200.0,
-            "2025-08-19": 200.0,
-            "2025-08-20": 200.0,
-            "2025-08-21": 200.0,
-            "2025-08-22": 200.0,
-            "2025-08-23": 200.0,
-            "2025-08-24": 200.0,
-            "2025-08-25": 200.0,
-            "2025-08-26": 200.0,
-            "2025-08-27": 200.0,
-            "2025-08-28": 200.0,
-            "2025-08-29": 200.0,
-            "2025-08-30": 200.0,
-            "2025-08-31": 200.0,
-            "2025-09-01": 200.0,
-            "2025-09-02": 200.0,
-            "2025-09-03": 200.0,
-            "2025-09-04": 200.0,
-            "2025-09-05": 200.0,
-            "2025-09-06": 200.0,
-            "2025-09-07": 200.0,
-            "2025-09-08": 200.0,
-            "2025-09-09": 200.0,
-            "2025-09-10": 200.0
+            "2025-06-21": 0.0,
+            "2025-06-22": 0.0,
+            "2025-06-23": 0.0,
+            "2025-06-24": 0.0,
+            "2025-06-25": 0.0,
+            "2025-06-26": 5720.31,
+            "2025-06-27": 5720.31,
+            "2025-06-28": 5720.31,
+            "2025-06-29": 5720.31,
+            "2025-06-30": 5720.31,
+            "2025-07-01": 0.0,
+            "2025-07-02": 0.0,
+            "2025-07-03": 0.0,
+            "2025-07-04": 0.0,
+            "2025-07-05": 0.0,
+            "2025-07-06": 0.0,
+            "2025-07-07": 0.0,
+            "2025-07-08": 0.0,
+            "2025-07-09": 0.0,
+            "2025-07-10": 0.0,
+            "2025-07-11": 0.0,
+            "2025-07-12": 0.0,
+            "2025-07-13": 0.0,
+            "2025-07-14": 0.0,
+            "2025-07-15": 0.0,
+            "2025-07-16": 0.0,
+            "2025-07-17": 0.0,
+            "2025-07-18": 0.0,
+            "2025-07-19": 0.0,
+            "2025-07-20": 0.0,
+            "2025-07-21": 0.0,
+            "2025-07-22": 0.0,
+            "2025-07-23": 0.0,
+            "2025-07-24": 0.0,
+            "2025-07-25": 0.0,
+            "2025-07-26": 0.0,
+            "2025-07-27": 0.0,
+            "2025-07-28": 0.0,
+            "2025-07-29": 0.0,
+            "2025-07-30": 0.0,
+            "2025-07-31": 0.0
         },
         "critical_points": [
-            {
-                "date": "2025-06-11",
-                "stock": 0.0,
-                "days_of_coverage": 0.0,
-                "severity": "critical",
-                "demand_on_date": 0
-            },
-            {
-                "date": "2025-06-12",
-                "stock": 0.0,
-                "days_of_coverage": 0.0,
-                "severity": "critical",
-                "demand_on_date": 0
-            },
-            {
-                "date": "2025-06-13",
-                "stock": 0.0,
-                "days_of_coverage": 0.0,
-                "severity": "critical",
-                "demand_on_date": 0
-            },
-            {
-                "date": "2025-06-14",
-                "stock": 0.0,
-                "days_of_coverage": 0.0,
-                "severity": "critical",
-                "demand_on_date": 0
-            },
-            {
-                "date": "2025-06-15",
-                "stock": 0.0,
-                "days_of_coverage": 0.0,
-                "severity": "critical",
-                "demand_on_date": 0
-            },
             {
                 "date": "2025-06-16",
                 "stock": 0.0,
@@ -238,51 +138,301 @@
                 "days_of_coverage": 0.0,
                 "severity": "critical",
                 "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-21",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-22",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-23",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-24",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-25",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-01",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 5720.31
+            },
+            {
+                "date": "2025-07-02",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-03",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-04",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-05",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-06",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-07",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-08",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-09",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-10",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-11",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-12",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-13",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-14",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-15",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-16",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-17",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-18",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-19",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-20",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-21",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-22",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-23",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-24",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-25",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-26",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-27",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-28",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-29",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-30",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-31",
+                "stock": 0.0,
+                "days_of_coverage": 0.0,
+                "severity": "critical",
+                "demand_on_date": 0
             }
         ],
         "production_efficiency": {
-            "average_batch_size": 200.0,
+            "average_batch_size": 5720.31,
             "production_line_utilization": 0.18,
             "production_gaps": [],
             "lead_time_compliance": 100,
-            "batch_efficiency": 98094571.8,
+            "batch_efficiency": 100.0,
             "critical_deliveries": 0,
             "average_safety_margin": 0.0
         },
         "demand_analysis": {
-            "total_demand": 0.0,
-            "average_daily_demand": 0.0,
+            "total_demand": 5720.31,
+            "average_daily_demand": 10.55,
             "demand_by_month": {
-                "2025-06": 0.0,
-                "2025-08": 0.0
+                "2025-07": 5720.31
             },
-            "period_days": 548,
-            "demand_events": 2,
-            "average_demand_per_event": 0.0,
-            "first_demand_date": "2025-06-21",
-            "last_demand_date": "2025-08-11",
+            "period_days": 542,
+            "demand_events": 1,
+            "average_demand_per_event": 5720.31,
+            "first_demand_date": "2025-07-01",
+            "last_demand_date": "2025-07-01",
             "demand_distribution": {
-                "2025-06-21": 0.000102,
-                "2025-08-11": 0.000102
+                "2025-07-01": 5720.31
             }
         },
         "sporadic_demand_metrics": {
             "demand_concentration": {
-                "concentration_index": 0.004,
+                "concentration_index": 0.002,
                 "concentration_level": "low",
-                "days_with_demand": 2,
-                "total_period_days": 548
+                "days_with_demand": 1,
+                "total_period_days": 542
             },
             "interval_statistics": {
-                "average_interval_days": 51.0,
-                "min_interval_days": 51,
-                "max_interval_days": 51,
-                "interval_variance": 0.0
+                "average_interval_days": 0,
+                "min_interval_days": 0,
+                "max_interval_days": 0,
+                "interval_variance": 0
             },
             "demand_predictability": "high",
             "peak_demand_analysis": {
                 "peak_count": 0,
-                "peak_threshold": 0.0,
+                "peak_threshold": 8580.47,
                 "peak_dates": [],
                 "average_peak_size": 0
             }
@@ -292,36 +442,24 @@
                 {
                     "period": "2025-06",
                     "end_date": "2025-06-30",
-                    "stock": 200.0,
-                    "days_of_coverage": 537558253.5
+                    "stock": 5720.31,
+                    "days_of_coverage": 542.0
                 },
                 {
                     "period": "2025-07",
                     "end_date": "2025-07-31",
-                    "stock": 200.0,
-                    "days_of_coverage": 537558253.5
-                },
-                {
-                    "period": "2025-08",
-                    "end_date": "2025-08-31",
-                    "stock": 200.0,
-                    "days_of_coverage": 537558253.5
-                },
-                {
-                    "period": "2025-09",
-                    "end_date": "2025-09-10",
-                    "stock": 200.0,
-                    "days_of_coverage": 537558253.5
+                    "stock": 0.0,
+                    "days_of_coverage": 0.0
                 }
             ],
             "after_batch_arrival": [
                 {
                     "batch_number": 1,
-                    "date": "2025-06-21",
+                    "date": "2025-06-26",
                     "stock_before": 0.0,
-                    "batch_quantity": 200.0,
-                    "stock_after": 200.0,
-                    "coverage_gained": 1961891
+                    "batch_quantity": 5720.31,
+                    "stock_after": 5720.31,
+                    "coverage_gained": 0
                 }
             ],
             "before_batch_arrival": []

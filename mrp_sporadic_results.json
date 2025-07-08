@@ -1,0 +1,1023 @@
+{
+    "batches": [
+        {
+            "order_date": "2025-05-05",
+            "arrival_date": "2025-07-14",
+            "quantity": 400.0,
+            "analytics": {
+                "stock_before_arrival": 1.0,
+                "stock_after_arrival": 401.0,
+                "consumption_since_last_arrival": 0,
+                "coverage_days": 6,
+                "actual_lead_time": 70,
+                "urgency_level": "high",
+                "production_start_delay": 0,
+                "arrival_delay": 0,
+                "target_demand_date": "2025-07-19",
+                "target_demand_quantity": 400.0,
+                "shortfall_covered": 399.0,
+                "demands_covered": [
+                    {
+                        "date": "2025-07-19",
+                        "quantity": 400.0
+                    }
+                ],
+                "coverage_count": 1,
+                "is_critical": false,
+                "safety_margin_days": 5,
+                "efficiency_ratio": 1.0,
+                "advanced_mrp_strategy": "hybrid_consolidation",
+                "eoq_used": 488.72,
+                "safety_stock_calculated": 0,
+                "reorder_point_used": 28000.0,
+                "service_level_z_score": 2.054,
+                "abc_classification": "C",
+                "xyz_classification": "X",
+                "demand_variability_cv": 0.0,
+                "demand_regularity_score": 1.0,
+                "seasonality_detected": false,
+                "trend_direction": "stable",
+                "holding_cost_impact": 1643.84,
+                "setup_cost_allocation": 500,
+                "total_cost_estimated": 2143.84,
+                "optimization_quality": "good",
+                "strategy_group_size": 1,
+                "strategy_consolidation_benefit": 0,
+                "strategy_demands_covered": [
+                    {
+                        "date": "2025-07-19",
+                        "quantity": 400.0
+                    }
+                ],
+                "strategy_group_span_days": 0
+            }
+        }
+    ],
+    "analytics": {
+        "summary": {
+            "initial_stock": 1.0,
+            "final_stock": 1.0,
+            "minimum_stock": 1.0,
+            "minimum_stock_date": "2025-04-30",
+            "stockout_occurred": false,
+            "total_batches": 1,
+            "total_produced": 400.0,
+            "production_coverage_rate": "100%",
+            "stock_consumed": 400.0,
+            "demand_fulfillment_rate": 0.0,
+            "demands_met_count": 0,
+            "demands_unmet_count": 1,
+            "unmet_demand_details": [
+                {
+                    "date": "2025-07-14",
+                    "demand": 400.0,
+                    "available_stock": 1.0,
+                    "shortage": 399.0
+                }
+            ],
+            "average_batch_per_demand": 1.0
+        },
+        "stock_evolution": {
+            "2025-04-30": 1.0,
+            "2025-05-01": 1.0,
+            "2025-05-02": 1.0,
+            "2025-05-03": 1.0,
+            "2025-05-04": 1.0,
+            "2025-05-05": 1.0,
+            "2025-05-06": 1.0,
+            "2025-05-07": 1.0,
+            "2025-05-08": 1.0,
+            "2025-05-09": 1.0,
+            "2025-05-10": 1.0,
+            "2025-05-11": 1.0,
+            "2025-05-12": 1.0,
+            "2025-05-13": 1.0,
+            "2025-05-14": 1.0,
+            "2025-05-15": 1.0,
+            "2025-05-16": 1.0,
+            "2025-05-17": 1.0,
+            "2025-05-18": 1.0,
+            "2025-05-19": 1.0,
+            "2025-05-20": 1.0,
+            "2025-05-21": 1.0,
+            "2025-05-22": 1.0,
+            "2025-05-23": 1.0,
+            "2025-05-24": 1.0,
+            "2025-05-25": 1.0,
+            "2025-05-26": 1.0,
+            "2025-05-27": 1.0,
+            "2025-05-28": 1.0,
+            "2025-05-29": 1.0,
+            "2025-05-30": 1.0,
+            "2025-05-31": 1.0,
+            "2025-06-01": 1.0,
+            "2025-06-02": 1.0,
+            "2025-06-03": 1.0,
+            "2025-06-04": 1.0,
+            "2025-06-05": 1.0,
+            "2025-06-06": 1.0,
+            "2025-06-07": 1.0,
+            "2025-06-08": 1.0,
+            "2025-06-09": 1.0,
+            "2025-06-10": 1.0,
+            "2025-06-11": 1.0,
+            "2025-06-12": 1.0,
+            "2025-06-13": 1.0,
+            "2025-06-14": 1.0,
+            "2025-06-15": 1.0,
+            "2025-06-16": 1.0,
+            "2025-06-17": 1.0,
+            "2025-06-18": 1.0,
+            "2025-06-19": 1.0,
+            "2025-06-20": 1.0,
+            "2025-06-21": 1.0,
+            "2025-06-22": 1.0,
+            "2025-06-23": 1.0,
+            "2025-06-24": 1.0,
+            "2025-06-25": 1.0,
+            "2025-06-26": 1.0,
+            "2025-06-27": 1.0,
+            "2025-06-28": 1.0,
+            "2025-06-29": 1.0,
+            "2025-06-30": 1.0,
+            "2025-07-01": 1.0,
+            "2025-07-02": 1.0,
+            "2025-07-03": 1.0,
+            "2025-07-04": 1.0,
+            "2025-07-05": 1.0,
+            "2025-07-06": 1.0,
+            "2025-07-07": 1.0,
+            "2025-07-08": 1.0,
+            "2025-07-09": 1.0,
+            "2025-07-10": 1.0,
+            "2025-07-11": 1.0,
+            "2025-07-12": 1.0,
+            "2025-07-13": 1.0,
+            "2025-07-14": 1.0,
+            "2025-07-15": 1.0,
+            "2025-07-16": 1.0,
+            "2025-07-17": 1.0,
+            "2025-07-18": 1.0,
+            "2025-07-19": 1.0,
+            "2025-07-20": 1.0,
+            "2025-07-21": 1.0,
+            "2025-07-22": 1.0,
+            "2025-07-23": 1.0,
+            "2025-07-24": 1.0,
+            "2025-07-25": 1.0,
+            "2025-07-26": 1.0,
+            "2025-07-27": 1.0,
+            "2025-07-28": 1.0,
+            "2025-07-29": 1.0,
+            "2025-07-30": 1.0,
+            "2025-07-31": 1.0,
+            "2025-08-01": 1.0,
+            "2025-08-02": 1.0,
+            "2025-08-03": 1.0,
+            "2025-08-04": 1.0,
+            "2025-08-05": 1.0,
+            "2025-08-06": 1.0,
+            "2025-08-07": 1.0,
+            "2025-08-08": 1.0,
+            "2025-08-09": 1.0,
+            "2025-08-10": 1.0,
+            "2025-08-11": 1.0,
+            "2025-08-12": 1.0,
+            "2025-08-13": 1.0
+        },
+        "critical_points": [
+            {
+                "date": "2025-04-30",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-01",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-02",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-03",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-04",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-05",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-06",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-07",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-08",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-09",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-10",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-11",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-12",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-13",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-14",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-15",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-16",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-17",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-18",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-19",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-20",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-21",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-22",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-23",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-24",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-25",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-26",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-27",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-28",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-29",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-30",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-05-31",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-01",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-02",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-03",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-04",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-05",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-06",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-07",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-08",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-09",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-10",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-11",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-12",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-13",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-14",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-15",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-16",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-17",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-18",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-19",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-20",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-21",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-22",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-23",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-24",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-25",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-26",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-27",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-28",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-29",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-06-30",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-01",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-02",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-03",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-04",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-05",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-06",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-07",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-08",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-09",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-10",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-11",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-12",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-13",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-14",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 400.0
+            },
+            {
+                "date": "2025-07-15",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-16",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-17",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-18",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-19",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-20",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-21",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-22",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-23",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-24",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-25",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-26",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-27",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-28",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-29",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-30",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-07-31",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-01",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-02",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-03",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-04",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-05",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-06",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-07",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-08",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-09",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-10",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-11",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-12",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            },
+            {
+                "date": "2025-08-13",
+                "stock": 1.0,
+                "days_of_coverage": 1.4,
+                "severity": "critical",
+                "demand_on_date": 0
+            }
+        ],
+        "production_efficiency": {
+            "average_batch_size": 400.0,
+            "production_line_utilization": 0.18,
+            "production_gaps": [],
+            "lead_time_compliance": 100,
+            "batch_efficiency": 100.0,
+            "critical_deliveries": 0,
+            "average_safety_margin": 5.0
+        },
+        "demand_analysis": {
+            "total_demand": 400.0,
+            "average_daily_demand": 0.74,
+            "demand_by_month": {
+                "2025-07": 400.0
+            },
+            "period_days": 542,
+            "demand_events": 1,
+            "average_demand_per_event": 400.0,
+            "first_demand_date": "2025-07-19",
+            "last_demand_date": "2025-07-19",
+            "demand_distribution": {
+                "2025-07-14": 400.0
+            }
+        },
+        "sporadic_demand_metrics": {
+            "demand_concentration": {
+                "concentration_index": 0.002,
+                "concentration_level": "low",
+                "days_with_demand": 1,
+                "total_period_days": 542
+            },
+            "interval_statistics": {
+                "average_interval_days": 0,
+                "min_interval_days": 0,
+                "max_interval_days": 0,
+                "interval_variance": 0
+            },
+            "demand_predictability": "high",
+            "peak_demand_analysis": {
+                "peak_count": 0,
+                "peak_threshold": 600.0,
+                "peak_dates": [],
+                "average_peak_size": 0
+            }
+        },
+        "stock_end_of_period": {
+            "monthly": [
+                {
+                    "period": "2025-04",
+                    "end_date": "2025-04-30",
+                    "stock": 1.0,
+                    "days_of_coverage": 1.4
+                },
+                {
+                    "period": "2025-05",
+                    "end_date": "2025-05-31",
+                    "stock": 1.0,
+                    "days_of_coverage": 1.4
+                },
+                {
+                    "period": "2025-06",
+                    "end_date": "2025-06-30",
+                    "stock": 1.0,
+                    "days_of_coverage": 1.4
+                },
+                {
+                    "period": "2025-07",
+                    "end_date": "2025-07-31",
+                    "stock": 1.0,
+                    "days_of_coverage": 1.4
+                },
+                {
+                    "period": "2025-08",
+                    "end_date": "2025-08-13",
+                    "stock": 1.0,
+                    "days_of_coverage": 1.4
+                }
+            ],
+            "after_batch_arrival": [
+                {
+                    "batch_number": 1,
+                    "date": "2025-07-14",
+                    "stock_before": 1.0,
+                    "batch_quantity": 400.0,
+                    "stock_after": 1.0,
+                    "coverage_gained": 1
+                }
+            ],
+            "before_batch_arrival": []
+        }
+    }
+}

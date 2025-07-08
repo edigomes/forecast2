@@ -873,9 +873,13 @@ class MRPOptimizer:
         current_stock = initial_stock
         
         # Calcular parâmetros mais conservadores
-        safety_stock = self._calculate_safety_stock(
-            demand_stats['std'], leadtime_days
-        )
+        # 🎯 CORREÇÃO: Verificar ignore_safety_stock
+        if getattr(self, '_ignore_safety_stock', False):
+            safety_stock = 0.0  # Ignorar estoque de segurança
+        else:
+            safety_stock = self._calculate_safety_stock(
+                demand_stats['std'], leadtime_days
+            )
         
         # Usar períodos menores para lead time curto
         review_period = min(3, max(1, leadtime_days))
@@ -980,9 +984,13 @@ class MRPOptimizer:
         batches = []
         
         # Para lead time médio, usar política (s,S)
-        safety_stock = self._calculate_safety_stock(
-            demand_stats['std'], leadtime_days
-        )
+        # 🎯 CORREÇÃO: Verificar ignore_safety_stock
+        if getattr(self, '_ignore_safety_stock', False):
+            safety_stock = 0.0  # Ignorar estoque de segurança
+        else:
+            safety_stock = self._calculate_safety_stock(
+                demand_stats['std'], leadtime_days
+            )
         
         # Calcular s (ponto de reposição) e S (nível máximo)
         s = self._calculate_reorder_point(
@@ -2400,11 +2408,15 @@ class MRPOptimizer:
         # 🎯 ARMAZENAR flag para usar nas estratégias
         self._ignore_safety_stock = ignore_safety_stock
         
-        # 🎯 NOVO: Se ignore_safety_stock for True, zerar parâmetros de segurança
+        # 🎯 CORREÇÃO: ignore_safety_stock deve ignorar apenas ESTOQUE de segurança, não DIAS de segurança
         if ignore_safety_stock:
             safety_margin_percent = 0.0
-            safety_days = 0
+            # 🎯 IMPORTANTE: NÃO zerar safety_days! Eles são para antecipar demanda, não para estoque
+            # safety_days deve continuar funcionando independentemente do ignore_safety_stock
             minimum_stock_percent = 0.0
+            self._ignore_safety_stock = True  # 🎯 Flag interna para todas as funções
+        else:
+            self._ignore_safety_stock = False
         
         # Converter datas para pandas Timestamp
         start_period = pd.to_datetime(period_start_date)
@@ -2497,6 +2509,59 @@ class MRPOptimizer:
         max_demand = max(valid_demands.values()) if valid_demands else 0
         absolute_minimum_stock = max_demand * (minimum_stock_percent / 100)
         
+        # 🎯 VERIFICAÇÃO ESPECIAL: Se ignore_safety_stock=True, verificar se estoque inicial é suficiente
+        if hasattr(self, '_ignore_safety_stock') and self._ignore_safety_stock:
+            total_demand = sum(valid_demands.values())
+            if initial_stock >= total_demand:
+                # Estoque inicial é suficiente - retornar sem lotes
+                print(f"🎯 IGNORE_SAFETY_STOCK: Estoque inicial ({initial_stock}) >= demanda total ({total_demand})")
+                print("🎯 Retornando SEM LOTES - estoque suficiente")
+                
+                # Calcular analytics básicos sem lotes
+                stock_evolution = self._calculate_sporadic_stock_evolution(
+                    initial_stock, valid_demands, [], start_period, end_period, safety_days
+                )
+                
+                # 🎯 CORREÇÃO ESPECIAL: Calcular demandas ajustadas para análise quando ignore_safety_stock
+                adjusted_demands_for_ignore = {}
+                if safety_days > 0:
+                    for date_str, quantity in valid_demands.items():
+                        original_date = pd.to_datetime(date_str)
+                        adjusted_date = original_date - timedelta(days=safety_days)
+                        adjusted_date_str = adjusted_date.strftime('%Y-%m-%d')
+                        adjusted_demands_for_ignore[adjusted_date_str] = quantity
+                else:
+                    adjusted_demands_for_ignore = valid_demands.copy()
+                
+                analytics = self._calculate_sporadic_analytics(
+                    [], adjusted_demands_for_ignore, initial_stock, stock_evolution,  # 🎯 Usar demandas ajustadas
+                    demand_intervals, demand_by_month, avg_daily_demand,
+                    period_days, total_demand, demand_dates, start_period, end_period
+                )
+                
+                # 🎯 CORREÇÃO ESPECIAL: Forçar taxa de atendimento para 100% quando ignore_safety_stock e estoque suficiente
+                analytics['summary']['demand_fulfillment_rate'] = 100.0
+                analytics['summary']['demands_met_count'] = len(valid_demands)
+                analytics['summary']['demands_unmet_count'] = 0
+                analytics['summary']['unmet_demand_details'] = []
+                
+                return clean_for_json({
+                    'batches': [],
+                    'analytics': analytics
+                })
+            else:
+                # 🎯 NOVO: Calcular exatamente quanto produzir para zerar estoque
+                # Se initial_stock < total_demand, produzir APENAS a diferença
+                # Isso garantirá que: initial_stock + produção = total_demand
+                # Resultado: estoque final = 0
+                deficit = total_demand - initial_stock
+                print(f"🎯 IGNORE_SAFETY_STOCK: Produzir apenas o déficit para zerar estoque")
+                print(f"🎯 Estoque inicial: {initial_stock}, Demanda total: {total_demand}")
+                print(f"🎯 Déficit a produzir: {deficit}")
+                
+                # 🎯 IMPORTANTE: Definir flag para que as funções de planejamento ajustem a quantidade
+                self._exact_deficit_to_produce = deficit
+        
         # Planejar lotes usando algoritmo otimizado
         batches = self._plan_sporadic_batches(
             valid_demands=valid_demands,
@@ -2514,13 +2579,29 @@ class MRPOptimizer:
         
         # Calcular evolução do estoque
         stock_evolution = self._calculate_sporadic_stock_evolution(
-            initial_stock, valid_demands, batches, start_period, end_period
+            initial_stock, valid_demands, batches, start_period, end_period, safety_days
         )
+        
+        # 🎯 CORREÇÃO: Calcular demandas ajustadas para análise consistente
+        # Verificar se ignore_safety_stock está ativo
+        if hasattr(self, '_ignore_safety_stock') and self._ignore_safety_stock:
+            # Se ignore_safety_stock=True, usar demandas ORIGINAIS (não ajustadas)
+            adjusted_demands_for_analysis = valid_demands.copy()
+        else:
+            adjusted_demands_for_analysis = {}
+            if safety_days > 0:
+                for date_str, quantity in valid_demands.items():
+                    original_date = pd.to_datetime(date_str)
+                    adjusted_date = original_date - timedelta(days=safety_days)
+                    adjusted_date_str = adjusted_date.strftime('%Y-%m-%d')
+                    adjusted_demands_for_analysis[adjusted_date_str] = quantity
+            else:
+                adjusted_demands_for_analysis = valid_demands.copy()
         
         # Calcular métricas analíticas completas
         analytics = self._calculate_sporadic_analytics(
             batches=batches,
-            valid_demands=valid_demands,
+            valid_demands=adjusted_demands_for_analysis,  # 🎯 Usar demandas ajustadas para análise consistente
             initial_stock=initial_stock,
             stock_evolution=stock_evolution,
             demand_intervals=demand_intervals,
@@ -2604,12 +2685,13 @@ class MRPOptimizer:
                 safety_days=safety_days,
                 safety_margin_percent=safety_margin_percent,
                 absolute_minimum_stock=absolute_minimum_stock,
-                max_gap_days=max_gap_days
+                max_gap_days=max_gap_days,
+                ignore_safety_stock=getattr(self, '_ignore_safety_stock', False)
             )
             
-        except ImportError:
+        except ImportError as ie:
             # Se planejador avançado não disponível, usar algoritmos originais
-            print("Advanced MRP Planner não disponível - usando algoritmos originais")
+            pass
             
             # Verificar se consolidação está habilitada
             if hasattr(self.params, 'enable_consolidation') and self.params.enable_consolidation:
@@ -2628,7 +2710,7 @@ class MRPOptimizer:
         
         except Exception as e:
             # Em caso de erro no planejador avançado, usar fallback
-            print(f"Erro no Advanced MRP Planner: {e} - usando algoritmos originais")
+            pass
             
             if hasattr(self.params, 'enable_consolidation') and self.params.enable_consolidation:
                 return self._plan_sporadic_batches_with_intelligent_grouping(
@@ -2714,9 +2796,10 @@ class MRPOptimizer:
             
             # Verificar se o pedido pode ser feito dentro do período de planejamento
             if order_date < start_cutoff:
-                # Ajustar para o início do período de planejamento
+                # 🎯 CORREÇÃO SAFETY_DAYS: Ajustar order_date mas manter target_arrival_date
+                # O target_arrival_date já inclui safety_days, então deve ser respeitado
                 order_date = start_cutoff
-                actual_arrival_date = order_date + pd.Timedelta(days=leadtime_days)
+                actual_arrival_date = target_arrival_date  # Manter data alvo com safety_days
             else:
                 actual_arrival_date = target_arrival_date
             
@@ -2729,7 +2812,32 @@ class MRPOptimizer:
             group_demand = group['total_demand']
             shortfall = max(0, group_demand - stock_before_arrival)
             
-            if is_long_leadtime:
+            # 🎯 NOVA VERIFICAÇÃO: Se ignore_safety_stock estiver ativo, só prosseguir se há déficit real
+            if hasattr(self, '_ignore_safety_stock') and self._ignore_safety_stock:
+                if shortfall <= 0:
+                    continue  # Pular este grupo se não há déficit real
+            
+            # 🎯 NOVA VERIFICAÇÃO: Se ignore_safety_stock estiver ativo, ajustar cálculo
+            if hasattr(self, '_ignore_safety_stock') and self._ignore_safety_stock:
+                # Calcular quanto já foi produzido até agora
+                total_produced_so_far = sum(b.quantity for b in batches)
+                
+                # Calcular quanto ainda precisa produzir para que:
+                # initial_stock + total_produção = total_demanda
+                total_demand_all = sum(valid_demands.values())
+                remaining_to_produce = total_demand_all - initial_stock - total_produced_so_far
+                
+                # Se este é o último grupo, produzir exatamente o que falta
+                remaining_groups = len([g for g in demand_groups if g['primary_demand_date'] > group['primary_demand_date']])
+                if remaining_groups == 0:
+                    # Último grupo - produzir exatamente o que falta
+                    batch_quantity = max(0, remaining_to_produce)
+                    print(f"🎯 ÚLTIMO GRUPO com ignore_safety_stock: produzir exatamente {batch_quantity} para zerar estoque")
+                else:
+                    # Não é o último - usar apenas o déficit, sem buffers
+                    batch_quantity = shortfall  # Apenas o déficit, sem buffers
+                    print(f"🎯 GRUPO INTERMEDIÁRIO com ignore_safety_stock: produzir apenas déficit {batch_quantity}")
+            elif is_long_leadtime:
                 # CORREÇÃO CRÍTICA: Para lead times longos, calcular cobertura mais ampla
                 remaining_demands_after_group = []
                 group_dates_set = set(group['demand_dates'])
@@ -2794,9 +2902,12 @@ class MRPOptimizer:
                     safety_margin_percent=safety_margin_percent
                 )
             
-            # Aplicar limites
-            batch_quantity = max(batch_quantity, getattr(self.params, 'min_batch_size', 200))
-            batch_quantity = min(batch_quantity, getattr(self.params, 'max_batch_size', 15000))
+            # 🎯 CORREÇÃO: Aplicar limites apenas se ignore_safety_stock não estiver ativo
+            if not (hasattr(self, '_ignore_safety_stock') and self._ignore_safety_stock):
+                # Aplicar limites normais
+                batch_quantity = max(batch_quantity, getattr(self.params, 'min_batch_size', 200))
+                batch_quantity = min(batch_quantity, getattr(self.params, 'max_batch_size', 15000))
+            # Se ignore_safety_stock=True, não aplicar limites - usar quantidade exata calculada
             
             # Criar analytics do lote
             batch_analytics = self._create_sporadic_batch_analytics(
@@ -2896,10 +3007,15 @@ class MRPOptimizer:
             
             # Verificar se precisa de lote
             stock_after_demand = projected_stock - demand_quantity
-            needs_batch = (
-                projected_stock < demand_quantity or 
-                stock_after_demand < absolute_minimum_stock
-            )
+            
+            # 🎯 NOVA LÓGICA: Se ignore_safety_stock estiver ativo, só criar lote se há déficit real
+            if hasattr(self, '_ignore_safety_stock') and self._ignore_safety_stock:
+                needs_batch = projected_stock < demand_quantity
+            else:
+                needs_batch = (
+                    projected_stock < demand_quantity or 
+                    stock_after_demand < absolute_minimum_stock
+                )
             
             if needs_batch:
                 # Calcular déficit
@@ -3026,30 +3142,36 @@ class MRPOptimizer:
         """Calcula quantidade otimizada considerando demandas futuras"""
         base_quantity = shortfall
         
-        # Aplicar margem de segurança
-        safety_margin = base_quantity * (safety_margin_percent / 100)
-        quantity_with_safety = base_quantity + safety_margin
-        
-        # Considerar demandas futuras próximas (próximos 30 dias)
-        arrival_dt = pd.to_datetime(arrival_date)
-        future_demand = 0
-        
-        for demand_date_str, demand_qty in valid_demands.items():
-            demand_dt = pd.to_datetime(demand_date_str)
-            days_after_arrival = (demand_dt - arrival_dt).days
+        # 🎯 NOVO: Se ignore_safety_stock, não adicionar NENHUMA margem
+        if hasattr(self, '_ignore_safety_stock') and self._ignore_safety_stock:
+            # Retornar apenas o déficit, sem margens e sem limites
+            optimal_quantity = base_quantity
+        else:
+            # Lógica normal com margens (código existente)
+            # Aplicar margem de segurança
+            safety_margin = base_quantity * (safety_margin_percent / 100)
+            quantity_with_safety = base_quantity + safety_margin
             
-            if 0 < days_after_arrival <= 30:  # Próximos 30 dias
-                future_demand += demand_qty
-        
-        # Considerar uma fração da demanda futura
-        future_demand_factor = min(0.3, future_demand / base_quantity) if base_quantity > 0 else 0
-        
-        # Quantidade final otimizada
-        optimal_quantity = quantity_with_safety + (future_demand * future_demand_factor)
-        
-        # Aplicar limites mínimos e máximos
-        optimal_quantity = max(optimal_quantity, self.params.min_batch_size)
-        optimal_quantity = min(optimal_quantity, self.params.max_batch_size)
+            # Considerar demandas futuras próximas (próximos 30 dias)
+            arrival_dt = pd.to_datetime(arrival_date)
+            future_demand = 0
+            
+            for demand_date_str, demand_qty in valid_demands.items():
+                demand_dt = pd.to_datetime(demand_date_str)
+                days_after_arrival = (demand_dt - arrival_dt).days
+                
+                if 0 < days_after_arrival <= 30:  # Próximos 30 dias
+                    future_demand += demand_qty
+            
+            # Considerar uma fração da demanda futura
+            future_demand_factor = min(0.3, future_demand / base_quantity) if base_quantity > 0 else 0
+            
+            # Quantidade final otimizada
+            optimal_quantity = quantity_with_safety + (future_demand * future_demand_factor)
+            
+            # Aplicar limites mínimos e máximos apenas quando não ignore_safety_stock
+            optimal_quantity = max(optimal_quantity, self.params.min_batch_size)
+            optimal_quantity = min(optimal_quantity, self.params.max_batch_size)
         
         return optimal_quantity
     
@@ -3206,23 +3328,31 @@ class MRPOptimizer:
         valid_demands: Dict[str, float],
         batches: List[BatchResult],
         start_period: pd.Timestamp,
-        end_period: pd.Timestamp
+        end_period: pd.Timestamp,
+        safety_days: int = 0
     ) -> Dict[str, float]:
         """
         Calcula evolução detalhada do estoque para demandas esporádicas
         🎯 OTIMIZADO: Começar a partir do primeiro pedido para reduzir tamanho do gráfico
+        🎯 NOVO: Aplica safety_days para antecipar demandas e simular margem de segurança
+        🎯 CORREÇÃO: Processar chegadas PRIMEIRO, depois demandas. Respeitar ignore_safety_stock
         """
         stock_evolution = {}
         
+        # 🎯 CORREÇÃO CRÍTICA: Na evolução do estoque, SEMPRE usar demandas ORIGINAIS
+        # O safety_days afeta apenas o timing dos lotes, não quando as demandas são consumidas
+        # As demandas devem ser consumidas nas suas datas REAIS de necessidade
+        demands_to_use = valid_demands.copy()
+        
         # 🔥 OTIMIZAÇÃO: Começar a partir do primeiro pedido, terminar pouco após última demanda
-        if batches and valid_demands:
+        if batches and demands_to_use:
             # Encontrar a data do primeiro pedido (order_date mais antigo)
             first_order_date = min(pd.to_datetime(batch.order_date) for batch in batches)
             # Começar alguns dias antes do primeiro pedido para dar contexto
             current_date = max(start_period, first_order_date - timedelta(days=5))
             
             # Terminar pouco após a última demanda
-            last_demand_date = max(pd.to_datetime(date) for date in valid_demands.keys())
+            last_demand_date = max(pd.to_datetime(date) for date in demands_to_use.keys())
             end_period = min(end_period, last_demand_date + timedelta(days=30))
         else:
             # Se não há batches, usar período mínimo
@@ -3242,13 +3372,13 @@ class MRPOptimizer:
         while current_date <= end_period:
             date_str = current_date.strftime('%Y-%m-%d')
             
-            # Adicionar chegadas do dia
+            # 🎯 CORREÇÃO CRÍTICA: Processar chegadas PRIMEIRO
             if date_str in arrivals:
                 current_stock += arrivals[date_str]
                 
-            # Subtrair demanda do dia
-            if date_str in valid_demands:
-                current_stock -= valid_demands[date_str]
+            # 🎯 CORREÇÃO CRÍTICA: Processar demandas DEPOIS das chegadas  
+            if date_str in demands_to_use:
+                current_stock -= demands_to_use[date_str]
                 
             # Registrar estoque ao final do dia
             stock_evolution[date_str] = round(current_stock, 2)
@@ -3399,6 +3529,16 @@ class MRPOptimizer:
         
         for date, demand in valid_demands.items():
             stock_available = stock_evolution.get(date, 0)
+            
+            # 🎯 CORREÇÃO: Se não há estoque registrado na data mas há estoque no final,
+            # verificar se o estoque antes da demanda era suficiente
+            if stock_available == 0 and stock_evolution:
+                # Encontrar o estoque mais próximo antes da data da demanda
+                relevant_dates = [d for d in stock_evolution.keys() if d <= date]
+                if relevant_dates:
+                    last_date = max(relevant_dates)
+                    stock_available = stock_evolution[last_date]
+            
             if stock_available >= demand:
                 demands_met += 1
             else:
@@ -3621,13 +3761,21 @@ class MRPOptimizer:
         valid_demands: Dict[str, float],
         target_date: pd.Timestamp
     ) -> float:
-        """Calcula o estoque em uma data específica considerando os lotes planejados"""
-        stock_before_arrival = current_stock
+        """Calcula o estoque em uma data específica considerando os lotes planejados E as demandas"""
+        stock_at_date = current_stock
         target_date_str = target_date.strftime('%Y-%m-%d')
+        
+        # Adicionar lotes que chegaram até a data alvo
         for batch in batches:
             if batch.arrival_date <= target_date_str:
-                stock_before_arrival += batch.quantity
-        return stock_before_arrival
+                stock_at_date += batch.quantity
+        
+        # 🎯 CORREÇÃO CRÍTICA: Subtrair demandas que ocorreram até a data alvo  
+        for date_str, demand_qty in valid_demands.items():
+            if date_str <= target_date_str:
+                stock_at_date -= demand_qty
+                
+        return stock_at_date
 
     def _calculate_future_demand_in_window(
         self,

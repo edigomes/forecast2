@@ -74,7 +74,8 @@ class AdvancedSporadicMRPPlanner:
         safety_margin_percent: float,
         absolute_minimum_stock: float,
         max_gap_days: int,
-        unit_cost: float = 100.0  # Custo unitário padrão para cálculos
+        unit_cost: float = 100.0,  # Custo unitário padrão para cálculos
+        ignore_safety_stock: bool = False  # 🎯 NOVO: Ignorar estoques de segurança
     ) -> List[BatchResult]:
         """
         Algoritmo avançado para planejamento de lotes esporádicos
@@ -88,6 +89,26 @@ class AdvancedSporadicMRPPlanner:
         """
         
         if not valid_demands:
+            return []
+        
+        # 🎯 VERIFICAÇÃO ESPECIAL: Se ignore_safety_stock=True, usar lógica simplificada
+        if ignore_safety_stock:
+            total_demand = sum(valid_demands.values())
+            if initial_stock >= total_demand:
+                # Estoque inicial é suficiente - retornar sem lotes
+                return []
+            else:
+                # Criar apenas um lote com a quantidade exata necessária
+                return self._create_exact_quantity_batch(
+                    valid_demands, initial_stock, leadtime_days, start_period, end_period,
+                    start_cutoff, end_cutoff, safety_days
+                )
+        
+        # 🎯 LÓGICA CORRETA: Aplicar margem APENAS quando há déficit real
+        total_demand = sum(valid_demands.values())
+        
+        if initial_stock >= total_demand:
+            # Estoque suficiente para cobrir demanda - retornar sem lotes
             return []
         
         # Etapa 1: Análise avançada das demandas
@@ -145,6 +166,135 @@ class AdvancedSporadicMRPPlanner:
         # ❌ Previsão Avançada - muito complexa para lead times longos
         # elif leadtime_days > 45:
         #     return self._long_leadtime_forecasting_strategy(...)
+    
+    def _create_exact_quantity_batch(
+        self,
+        valid_demands: Dict[str, float],
+        initial_stock: float,
+        leadtime_days: int,
+        start_period: pd.Timestamp,
+        end_period: pd.Timestamp,
+        start_cutoff: pd.Timestamp,
+        end_cutoff: pd.Timestamp,
+        safety_days: int
+    ) -> List[BatchResult]:
+        """
+        Cria um lote com quantidade exata para zerar estoque quando ignore_safety_stock=True
+        """
+        total_demand = sum(valid_demands.values())
+        deficit = total_demand - initial_stock
+        
+        if deficit <= 0:
+            return []
+        
+        # Encontrar a primeira demanda para definir data do lote
+        first_demand_date = min(pd.to_datetime(date) for date in valid_demands.keys())
+        
+        # Calcular datas do pedido considerando lead time e safety days
+        target_arrival_date = first_demand_date - pd.Timedelta(days=safety_days)
+        order_date = target_arrival_date - pd.Timedelta(days=leadtime_days)
+        order_date = max(order_date, start_cutoff)
+        actual_arrival_date = order_date + pd.Timedelta(days=leadtime_days)
+        
+        # Verificar se chegará dentro do período válido
+        if actual_arrival_date > end_cutoff:
+            actual_arrival_date = end_cutoff
+            order_date = actual_arrival_date - pd.Timedelta(days=leadtime_days)
+        
+        # Criar analytics simplificados
+        analytics = {
+            'stock_before_arrival': initial_stock,
+            'stock_after_arrival': initial_stock + deficit,
+            'coverage_days': 0,
+            'actual_lead_time': leadtime_days,
+            'urgency_level': 'normal',
+            'production_start_delay': 0,
+            'arrival_delay': 0,
+            'target_demand_date': min(valid_demands.keys()),
+            'target_demand_quantity': total_demand,
+            'shortfall_covered': deficit,
+            'safety_margin_percent': 0.0,  # Sem margem de segurança
+            'exact_quantity_mode': True,  # Flag especial
+            'ignore_safety_stock_applied': True
+        }
+        
+        # Criar o lote
+        batch = BatchResult(
+            order_date=order_date.strftime('%Y-%m-%d'),
+            arrival_date=actual_arrival_date.strftime('%Y-%m-%d'),
+            quantity=deficit,  # Quantidade exata necessária
+            analytics=analytics
+        )
+        
+        print(f"🎯 EXACT QUANTITY BATCH: deficit={deficit}, order_date={order_date.strftime('%Y-%m-%d')}, arrival_date={actual_arrival_date.strftime('%Y-%m-%d')}")
+        
+        return [batch]
+    
+    def _create_safety_margin_batch(
+        self,
+        valid_demands: Dict[str, float],
+        initial_stock: float,
+        leadtime_days: int,
+        start_period: pd.Timestamp,
+        end_period: pd.Timestamp,
+        start_cutoff: pd.Timestamp,
+        end_cutoff: pd.Timestamp,
+        safety_days: int,
+        safety_margin_percent: float
+    ) -> List[BatchResult]:
+        """
+        Cria um lote especificamente para cobrir a margem de segurança quando estoque inicial
+        já cobre a demanda, mas não cobre a demanda + margem de segurança
+        """
+        total_demand = sum(valid_demands.values())
+        safety_margin = total_demand * (safety_margin_percent / 100.0)
+        
+        if safety_margin <= 0:
+            return []
+        
+        # Encontrar a primeira demanda para definir data do lote
+        first_demand_date = min(pd.to_datetime(date) for date in valid_demands.keys())
+        
+        # Calcular datas do pedido considerando lead time e safety days
+        target_arrival_date = first_demand_date - pd.Timedelta(days=safety_days)
+        order_date = target_arrival_date - pd.Timedelta(days=leadtime_days)
+        order_date = max(order_date, start_cutoff)
+        actual_arrival_date = order_date + pd.Timedelta(days=leadtime_days)
+        
+        # Verificar se chegará dentro do período válido
+        if actual_arrival_date > end_cutoff:
+            actual_arrival_date = end_cutoff
+            order_date = actual_arrival_date - pd.Timedelta(days=leadtime_days)
+        
+        # Criar analytics para margem de segurança
+        analytics = {
+            'stock_before_arrival': initial_stock,
+            'stock_after_arrival': initial_stock + safety_margin,
+            'coverage_days': 0,
+            'actual_lead_time': leadtime_days,
+            'urgency_level': 'normal',
+            'production_start_delay': 0,
+            'arrival_delay': 0,
+            'target_demand_date': min(valid_demands.keys()),
+            'target_demand_quantity': total_demand,
+            'shortfall_covered': 0,
+            'safety_margin_percent': safety_margin_percent,
+            'safety_margin_quantity': safety_margin,
+            'safety_margin_mode': True,  # Flag especial
+            'demands_covered': [{'date': date, 'quantity': qty} for date, qty in valid_demands.items()]
+        }
+        
+        # Criar o lote para margem de segurança
+        batch = BatchResult(
+            order_date=order_date.strftime('%Y-%m-%d'),
+            arrival_date=actual_arrival_date.strftime('%Y-%m-%d'),
+            quantity=safety_margin,  # Apenas a margem de segurança
+            analytics=analytics
+        )
+        
+        print(f"🎯 SAFETY MARGIN BATCH: margin={safety_margin:.2f} ({safety_margin_percent}%), order_date={order_date.strftime('%Y-%m-%d')}, arrival_date={actual_arrival_date.strftime('%Y-%m-%d')}")
+        
+        return [batch]
     
     def _analyze_demand_patterns_advanced(
         self, 
@@ -882,28 +1032,18 @@ class AdvancedSporadicMRPPlanner:
                     )
                     continue  # Não criar novo pedido
                 
-                # Determinar quantidade do batch - estratégia proativa para lead time médio
-                # Considerar demandas próximas para otimizar consolidação
-                future_demand = 0
-                lookahead_days = min(leadtime_days * 2, 60)  # Olhar adiante 2x o lead time (max 60 dias)
+                # 🎯 QUANTIDADE CONSERVADORA: Usar apenas déficit + margem especificada
+                base_quantity = shortage
                 
-                for j in range(i + 1, len(demand_dates)):
-                    next_date = pd.to_datetime(demand_dates[j])
-                    days_ahead = (next_date - demand_date).days
-                    
-                    if days_ahead <= lookahead_days:
-                        future_demand += valid_demands[demand_dates[j]]
-                    else:
-                        break
+                # 🎯 MARGEM CONTROLADA: Aplicar APENAS o safety_margin_percent especificado
+                safety_buffer = base_quantity * (safety_margin_percent / 100.0) if safety_margin_percent > 0 else 0
                 
-                # Quantidade do batch = shortage + porção da demanda futura
-                consolidation_factor = min(0.7, leadtime_days / 60.0)  # Mais consolidação para lead times maiores
-                batch_quantity = shortage + (future_demand * consolidation_factor)
+                # Quantidade final conservadora
+                batch_quantity = base_quantity + safety_buffer
                 
-                # Aplicar mínimos e máximos baseados no EOQ
-                min_batch = max(demand_qty, mrp_calcs.eoq * 0.5)
-                max_batch = mrp_calcs.eoq * 2.0
-                batch_quantity = max(min_batch, min(batch_quantity, max_batch))
+                # Aplicar limites mínimos apenas se necessário (não forçar EOQ)
+                batch_quantity = max(batch_quantity, self.params.min_batch_size)
+                batch_quantity = min(batch_quantity, self.params.max_batch_size)
                 
                 # Calcular datas de ordem e chegada
                 order_date = demand_date - pd.Timedelta(days=leadtime_days + safety_days)
@@ -1398,24 +1538,37 @@ class AdvancedSporadicMRPPlanner:
                 )
                 continue  # Não criar novo pedido para este grupo
             
-            # Calcular data ótima baseada no grupo
-            order_date = primary_date - pd.Timedelta(days=leadtime_days + safety_days)
-            order_date = max(order_date, start_cutoff)
-            arrival_date = order_date + pd.Timedelta(days=leadtime_days)
+            # 🎯 CORREÇÃO SAFETY_DAYS: Calcular data alvo com safety_days primeiro
+            target_arrival_date = primary_date - pd.Timedelta(days=safety_days)
+            ideal_order_date = target_arrival_date - pd.Timedelta(days=leadtime_days)
+            
+            # Ajustar order_date se necessário, mas manter target_arrival_date
+            order_date = max(ideal_order_date, start_cutoff)
+            arrival_date = target_arrival_date  # Manter data alvo com safety_days
             
             if arrival_date <= end_cutoff:
                 
-                # Quantidade baseada em EOQ mas ajustada para o grupo
-                base_quantity = max(mrp_calcs.eoq, group_demand)
+                # 🎯 CORREÇÃO: Calcular déficit real primeiro
+                projected_stock = self._project_stock_to_date(
+                    initial_stock, valid_demands, batches, group['primary_date'], start_period
+                )
                 
-                # Adicionar buffer inteligente baseado no grupo
-                if group['consolidation_benefit'] > 0:
-                    # Se há benefício real de consolidação, usar quantidade maior
-                    consolidation_buffer = group_demand * 0.15  # 15% extra
-                    batch_quantity = base_quantity + consolidation_buffer
+                # Déficit real = demanda do grupo - estoque disponível
+                deficit = max(0, group_demand - projected_stock)
+                
+                if deficit > 0:
+                    # Há déficit real - calcular quantidade com margem
+                    # 🎯 APLICAR SAFETY_MARGIN_PERCENT sobre o déficit
+                    safety_buffer = deficit * (safety_margin_percent / 100.0) if safety_margin_percent > 0 else 0
+                    batch_quantity = deficit + safety_buffer
+                    
+                    # Adicionar buffer inteligente baseado no grupo (opcional)
+                    if group['consolidation_benefit'] > 0:
+                        consolidation_buffer = deficit * 0.1  # 10% extra do déficit
+                        batch_quantity += consolidation_buffer
                 else:
-                    # Sem benefício significativo, usar quantidade mínima necessária
-                    batch_quantity = group_demand + mrp_calcs.safety_stock
+                    # Sem déficit - não criar lote (comportamento conservador)
+                    continue
                 
                 batch_quantity = max(self.params.min_batch_size, 
                                    min(self.params.max_batch_size, batch_quantity))
