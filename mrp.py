@@ -2904,9 +2904,17 @@ class MRPOptimizer:
             
             # 🎯 CORREÇÃO: Aplicar limites apenas se ignore_safety_stock não estiver ativo
             if not (hasattr(self, '_ignore_safety_stock') and self._ignore_safety_stock):
-                # Aplicar limites normais
-                batch_quantity = max(batch_quantity, getattr(self.params, 'min_batch_size', 200))
-                batch_quantity = min(batch_quantity, getattr(self.params, 'max_batch_size', 15000))
+                # 🎯 NOVA CORREÇÃO: Para demandas consolidadas pequenas, não forçar min_batch_size
+                min_batch_threshold = getattr(self.params, 'min_batch_size', 200) * 0.5  # 50% do min_batch_size
+                
+                if group_demand < min_batch_threshold:
+                    # Demanda consolidada pequena - usar quantidade necessária sem forçar mínimo
+                    batch_quantity = min(batch_quantity, getattr(self.params, 'max_batch_size', 15000))
+                    print(f"🎯 DEMANDA CONSOLIDADA PEQUENA: {group_demand} < {min_batch_threshold:.1f}, produzindo {batch_quantity:.2f} sem min_batch_size")
+                else:
+                    # Demanda normal - aplicar limites tradicionais
+                    batch_quantity = max(batch_quantity, getattr(self.params, 'min_batch_size', 200))
+                    batch_quantity = min(batch_quantity, getattr(self.params, 'max_batch_size', 15000))
             # Se ignore_safety_stock=True, não aplicar limites - usar quantidade exata calculada
             
             # Criar analytics do lote
@@ -3169,9 +3177,18 @@ class MRPOptimizer:
             # Quantidade final otimizada
             optimal_quantity = quantity_with_safety + (future_demand * future_demand_factor)
             
-            # Aplicar limites mínimos e máximos apenas quando não ignore_safety_stock
-            optimal_quantity = max(optimal_quantity, self.params.min_batch_size)
-            optimal_quantity = min(optimal_quantity, self.params.max_batch_size)
+            # 🎯 NOVA CORREÇÃO: Para demandas pequenas, não forçar min_batch_size
+            total_demand = sum(valid_demands.values())
+            min_batch_threshold = self.params.min_batch_size * 0.5  # 50% do min_batch_size
+            
+            if total_demand < min_batch_threshold:
+                # Demanda total pequena - usar quantidade necessária sem forçar mínimo
+                optimal_quantity = min(optimal_quantity, self.params.max_batch_size)
+                print(f"🎯 DEMANDA PEQUENA: {total_demand} < {min_batch_threshold:.1f}, produzindo {optimal_quantity:.2f} sem min_batch_size")
+            else:
+                # Demanda normal - aplicar limites tradicionais
+                optimal_quantity = max(optimal_quantity, self.params.min_batch_size)
+                optimal_quantity = min(optimal_quantity, self.params.max_batch_size)
         
         return optimal_quantity
     

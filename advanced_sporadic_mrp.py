@@ -931,9 +931,15 @@ class AdvancedSporadicMRPPlanner:
                     # Quantidade final
                     batch_quantity = base_quantity + safety_buffer
                     
-                    # Aplicar limites mínimos e máximos
-                    batch_quantity = max(self.params.min_batch_size, 
-                                       min(self.params.max_batch_size, batch_quantity))
+                    # 🎯 CORREÇÃO: Para demandas esporádicas pequenas, não forçar min_batch_size
+                    # Se a demanda total é muito menor que min_batch_size, usar quantidade real necessária
+                    if demand_qty < (self.params.min_batch_size * 0.5):
+                        # Demanda pequena - usar quantidade necessária sem forçar mínimo
+                        batch_quantity = min(batch_quantity, self.params.max_batch_size)
+                    else:
+                        # Demanda normal - aplicar limites tradicionais
+                        batch_quantity = max(self.params.min_batch_size, 
+                                           min(self.params.max_batch_size, batch_quantity))
                     
                     # Criar analytics avançados
                     analytics = self._create_advanced_batch_analytics(
@@ -1570,8 +1576,14 @@ class AdvancedSporadicMRPPlanner:
                     # Sem déficit - não criar lote (comportamento conservador)
                     continue
                 
-                batch_quantity = max(self.params.min_batch_size, 
-                                   min(self.params.max_batch_size, batch_quantity))
+                # 🎯 CORREÇÃO: Para demandas esporádicas pequenas, não forçar min_batch_size
+                if group_demand < (self.params.min_batch_size * 0.5):
+                    # Demanda pequena - usar quantidade necessária sem forçar mínimo
+                    batch_quantity = min(batch_quantity, self.params.max_batch_size)
+                else:
+                    # Demanda normal - aplicar limites tradicionais
+                    batch_quantity = max(self.params.min_batch_size, 
+                                       min(self.params.max_batch_size, batch_quantity))
                 
                 analytics = self._create_advanced_batch_analytics(
                     group['primary_date'], group['demands'][0]['quantity'],
