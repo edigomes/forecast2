@@ -1,0 +1,216 @@
+{
+  "batches": [
+    {
+      "order_date": "2025-08-06",
+      "arrival_date": "2025-08-26",
+      "quantity": 200.0,
+      "analytics": {
+        "informative_batch": true,
+        "stock_before_arrival": 133.47,
+        "stock_after_arrival": 333.47,
+        "coverage_days": 123,
+        "actual_lead_time": 20,
+        "urgency_level": "normal",
+        "batch_purpose": "visualization_only",
+        "production_strategy": "informative_long_leadtime",
+        "consumption_since_last_arrival": 40.53,
+        "estoque_inicial": 174,
+        "estoque_final": 323.74,
+        "consumo_lote": 50.26,
+        "production_start_delay": 0,
+        "arrival_delay": 0
+      }
+    }
+  ],
+  "analytics": {
+    "summary": {
+      "initial_stock": 174,
+      "final_stock": 323.74,
+      "minimum_stock": 133.47,
+      "minimum_stock_date": "2025-08-25",
+      "stockout_occurred": false,
+      "total_batches": 1,
+      "total_produced": 200.0,
+      "production_coverage_rate": "398%",
+      "stock_consumed": 0.0
+    },
+    "stock_evolution": {
+      "2025-08-01": 172.38,
+      "2025-08-02": 170.76,
+      "2025-08-03": 169.14,
+      "2025-08-04": 167.51,
+      "2025-08-05": 165.89,
+      "2025-08-06": 164.27,
+      "2025-08-07": 162.65,
+      "2025-08-08": 161.03,
+      "2025-08-09": 159.41,
+      "2025-08-10": 157.79,
+      "2025-08-11": 156.17,
+      "2025-08-12": 154.54,
+      "2025-08-13": 152.92,
+      "2025-08-14": 151.3,
+      "2025-08-15": 149.68,
+      "2025-08-16": 148.06,
+      "2025-08-17": 146.44,
+      "2025-08-18": 144.82,
+      "2025-08-19": 143.2,
+      "2025-08-20": 141.57,
+      "2025-08-21": 139.95,
+      "2025-08-22": 138.33,
+      "2025-08-23": 136.71,
+      "2025-08-24": 135.09,
+      "2025-08-25": 133.47,
+      "2025-08-26": 331.85,
+      "2025-08-27": 330.23,
+      "2025-08-28": 328.6,
+      "2025-08-29": 326.98,
+      "2025-08-30": 325.36,
+      "2025-08-31": 323.74
+    },
+    "critical_points": [],
+    "production_efficiency": {
+      "average_batch_size": 200.0,
+      "production_line_utilization": 66.67,
+      "production_gaps": [],
+      "lead_time_compliance": 100
+    },
+    "demand_analysis": {
+      "total_demand": 50.26,
+      "average_daily_demand": 1.62,
+      "demand_by_month": {
+        "2025-08": 50.26
+      },
+      "period_days": 31
+    },
+    "stock_end_of_period": {
+      "monthly": [
+        {
+          "period": "2025-08",
+          "end_date": "2025-08-31",
+          "stock": 323.74,
+          "days_of_coverage": 199.7
+        }
+      ],
+      "after_batch_arrival": [
+        {
+          "batch_number": 1,
+          "date": "2025-08-26",
+          "stock_before": 133.47,
+          "batch_quantity": 200.0,
+          "stock_after": 331.85,
+          "coverage_gained": 123
+        }
+      ],
+      "before_batch_arrival": []
+    },
+    "order_dates": [
+      "2025-08-06"
+    ],
+    "extended_analytics": {
+      "performance_metrics": {
+        "realized_service_level": 100.0,
+        "inventory_turnover": 0.27,
+        "average_days_of_inventory": 115.2,
+        "setup_frequency": 1,
+        "average_batch_size": 200.0,
+        "stock_variability_cv": 0.374,
+        "perfect_order_rate": 0.0
+      },
+      "cost_analysis": {
+        "total_cost": 2133.04,
+        "setup_cost": 250.0,
+        "holding_cost": 1883.04,
+        "stockout_cost": 0.0,
+        "cost_breakdown_percentage": {
+          "setup": 11.7,
+          "holding": 88.3,
+          "stockout": 0.0
+        }
+      },
+      "optimization_metrics": {
+        "theoretical_eoq": 121.63,
+        "actual_average_batch": 200.0,
+        "eoq_adherence_rate": 35.57,
+        "consolidation_savings": 0.0,
+        "optimal_review_period": 60,
+        "batches_vs_optimal": {
+          "actual_batches": 1,
+          "optimal_batches": 0.4,
+          "efficiency": 41.32
+        }
+      },
+      "risk_analysis": {
+        "stockout_risk": {
+          "probability": 0.0,
+          "expected_stockouts_per_year": 0.0,
+          "average_days_to_stockout": 999999999.0,
+          "severity": "low"
+        },
+        "inventory_risk": {
+          "var_95": 135.9,
+          "cvar_95": 134.28,
+          "min_stock_as_days": 82.3,
+          "volatility": 69.89
+        },
+        "demand_uncertainty": {
+          "coefficient_of_variation": 0.0,
+          "predictability": "high",
+          "forecast_error_impact": 0.0
+        }
+      },
+      "seasonality_analysis": {
+        "seasonality_detected": false,
+        "weekly_pattern": {
+          "Segunda": 1.0,
+          "Terça": 1.0,
+          "Quarta": 1.0,
+          "Quinta": 1.0,
+          "Sexta": 1.0,
+          "Sábado": 1.0,
+          "Domingo": 1.0
+        },
+        "peak_day": "Segunda",
+        "low_day": "Segunda",
+        "trend": {
+          "direction": "increasing",
+          "strength": 0.0,
+          "monthly_growth_rate": 0.0
+        }
+      },
+      "recommendations": [
+        {
+          "type": "lead_time",
+          "priority": "high",
+          "message": "Lead time longo identificado. Isso aumenta a incerteza e necessidade de estoque.",
+          "action": "Negociar redução de lead time com fornecedor ou buscar alternativas locais",
+          "expected_impact": "Redução de 10.0 unidades em estoque de segurança"
+        }
+      ],
+      "what_if_scenarios": {
+        "demand_increase_20%": {
+          "additional_stock_needed": 0.0,
+          "additional_orders_per_month": 0.0,
+          "cost_impact": 2367.08
+        },
+        "leadtime_reduction_50%": {
+          "safety_stock_reduction": 0.0,
+          "working_capital_freed": 0.0,
+          "flexibility_improvement": "Alta - resposta 50% mais rápida a mudanças de demanda"
+        },
+        "perfect_forecast": {
+          "safety_stock_elimination": 0.0,
+          "cost_savings": 0.0,
+          "feasibility": "Baixa - considere melhorias incrementais na previsão"
+        }
+      },
+      "optimization_parameters_used": {
+        "setup_cost": 250.0,
+        "holding_cost_rate": 0.2,
+        "service_level_target": 0.92,
+        "consolidation_enabled": true,
+        "eoq_optimization_enabled": true,
+        "strategy_used": "Long Lead Time MRP"
+      }
+    }
+  }
+}
