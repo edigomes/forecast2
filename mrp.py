@@ -120,7 +120,7 @@ class MRPOptimizer:
         include_extended_analytics: bool = False,  # Novo parâmetro
         ignore_safety_stock: bool = False,  # 🎯 NOVO: Ignorar completamente estoque de segurança
         exact_quantity_match: bool = False,  # 🎯 NOVO: Garantir que estoque total (inicial + produzido) seja exatamente igual à demanda total
-        force_informative_batches: bool = False,  # 🎯 NOVO: Forçar geração de batches informativos mesmo sem necessidade
+        force_excess_production: bool = False,  # 🎯 NOVO: Forçar produção real mesmo com estoque suficiente
         **kwargs
     ) -> Dict:
         """
@@ -137,7 +137,8 @@ class MRPOptimizer:
             include_extended_analytics: Se True, inclui analytics avançados
             ignore_safety_stock: Se True, ignora completamente estoque de segurança
             exact_quantity_match: Se True, garante que estoque total (inicial + produzido) seja exatamente igual à demanda total, considerando o estoque inicial
-            force_informative_batches: Se True, força geração de batches informativos mesmo quando não há necessidade real
+    
+            force_excess_production: Se True, força produção real mesmo com estoque suficiente (sobreprodução)
             **kwargs: Parâmetros adicionais que sobrescrevem os padrões
             
         Returns:
@@ -149,7 +150,7 @@ class MRPOptimizer:
         # 🎯 ARMAZENAR flags para usar nas estratégias
         self._ignore_safety_stock = ignore_safety_stock
         self._exact_quantity_match = exact_quantity_match
-        self._force_informative_batches = force_informative_batches
+        self._force_excess_production = force_excess_production
         
         # Converter datas
         start_period = pd.to_datetime(period_start_date)
@@ -192,9 +193,9 @@ class MRPOptimizer:
         # 🎯 NOVO: Correção automática de stockout nos primeiros lotes
         batches = self._correct_early_stockout(batches, demand_df, initial_stock, leadtime_days)
         
-        # 🎯 NOVO: Gerar batches informativos se solicitado e não há batches reais
-        if self._force_informative_batches and len(batches) == 0:
-            batches = self._generate_informative_batches(
+        # 🎯 NOVO: Forçar produção excessiva se solicitado e não há batches reais
+        if self._force_excess_production and len(batches) == 0:
+            batches = self._generate_excess_production_batches(
                 demand_df, initial_stock, leadtime_days, demand_stats,
                 start_cutoff, end_cutoff, start_period, end_period
             )
@@ -213,10 +214,17 @@ class MRPOptimizer:
                 batches, demand_df, initial_stock, demand_stats, analytics, leadtime_days
             )
         
+        # Verificar se há produção em excesso
+        has_excess_production = any(
+            batch.analytics.get('excess_production', False) 
+            for batch in batches
+        )
+        
         # Limpar dados para compatibilidade JSON/PHP
         result = {
             'batches': [self._batch_to_dict(b) for b in batches],
-            'analytics': analytics
+            'analytics': analytics,
+            'has_excess_production': has_excess_production
         }
         
         return clean_for_json(result)
@@ -1797,7 +1805,9 @@ class MRPOptimizer:
         else:
             return 'long'
     
-    def _generate_informative_batches(
+
+    
+    def _generate_excess_production_batches(
         self,
         demand_df: pd.DataFrame,
         initial_stock: float,
@@ -1809,32 +1819,26 @@ class MRPOptimizer:
         end_period: pd.Timestamp
     ) -> List[BatchResult]:
         """
-        🎯 NOVO: Gera batches informativos para exibir ao usuário mesmo quando não há necessidade real
+        🎯 NOVO: Gera batches de produção excessiva (sobreprodução)
         
-        Esta função cria lotes que mostram como seria um planejamento MRP típico,
-        servindo como ferramenta educativa e de visualização.
+        Quando o cliente quer produzir mesmo tendo estoque suficiente,
+        geramos lotes REAIS (não informativos) que serão contabilizados
+        como produção real.
         """
         batches = []
         
-        # 🎯 AJUSTE: Sempre gerar apenas 1 lote informativo por produto
-        # Mais simples e claro para visualização
-        num_informative_batches = 1
-            
-        # 🎯 AJUSTE: Quantidade = exatamente a demanda total (mais intuitivo)
+        # Quantidade = exatamente a demanda total (como solicitado)
         if demand_stats['total'] > 0:
-            typical_batch_quantity = demand_stats['total']
+            excess_quantity = demand_stats['total']
         else:
-            # Fallback: quantidade simbólica pequena para demonstração
-            typical_batch_quantity = 50
-            
+            excess_quantity = 50  # Fallback simbólico
+        
         # Garantir que não seja zero
-        typical_batch_quantity = max(1, typical_batch_quantity)
+        excess_quantity = max(1, excess_quantity)
         
-        # 🎯 AJUSTE: Posicionamento otimizado para um único lote informativo
+        # Posicionamento no tempo (similar aos lotes informativos)
         period_days = (end_period - start_period).days + 1
-        
-        # Posicionar o lote no meio do período para demonstração equilibrada
-        order_offset_days = period_days // 2
+        order_offset_days = period_days // 2  # Meio do período
         
         # Data do pedido
         order_date = start_period + pd.Timedelta(days=order_offset_days)
@@ -1858,43 +1862,28 @@ class MRPOptimizer:
             days_from_start_arrival = (arrival_date - start_period).days
             stock_at_arrival = initial_stock - (demand_stats['mean'] * days_from_start_arrival)
             
-            # Criar analytics informativos
+            # Calcular cobertura atual em dias
+            current_coverage_days = initial_stock / demand_stats['mean'] if demand_stats['mean'] > 0 else 999
+            
+            # Criar analytics padrão (iguais aos lotes normais)
             batch_analytics = {
                 'stock_before_arrival': round(stock_at_arrival, 2),
-                'stock_after_arrival': round(stock_at_arrival + typical_batch_quantity, 2),
+                'stock_after_arrival': round(stock_at_arrival + excess_quantity, 2),
                 'consumption_since_last_arrival': round(demand_stats['mean'] * leadtime_days, 2),
-                'coverage_days': round(typical_batch_quantity / demand_stats['mean']) if demand_stats['mean'] > 0 else 30,
+                'coverage_days': round(excess_quantity / demand_stats['mean']) if demand_stats['mean'] > 0 else 30,
                 'actual_lead_time': leadtime_days,
-                'urgency_level': 'informative',
+                'urgency_level': 'normal',
                 'production_start_delay': 0,
                 'arrival_delay': 0,
-                # Campos específicos para lotes informativos
-                'informative_batch': True,
-                'informative_purpose': 'visualization',
-                'actual_need': 'none',
-                'stock_at_order': round(stock_at_order, 2),
-                'typical_reorder_scenario': True,
-                'batch_sequence': 1,
-                'total_informative_batches': 1,
-                # Explicação para o usuário
-                'explanation': 'Lote informativo - demonstra como seria um planejamento MRP típico para este cenário'
+                # Único campo específico para identificar produção em excesso
+                'excess_production': True
             }
             
-            # Adicionar informações sobre estratégia usada
-            if leadtime_days == 0:
-                batch_analytics['strategy_explanation'] = 'JIT - Produção just-in-time'
-            elif leadtime_days <= 3:
-                batch_analytics['strategy_explanation'] = 'Lead time curto - Consolidação rápida'
-            elif leadtime_days <= 14:
-                batch_analytics['strategy_explanation'] = 'Lead time médio - Política (s,S)'
-            else:
-                batch_analytics['strategy_explanation'] = 'Lead time longo - MRP com lotes grandes'
-            
-            # Criar lote informativo
+            # Criar lote de produção excessiva (REAL, não informativo)
             batch = BatchResult(
                 order_date=order_date.strftime('%Y-%m-%d'),
                 arrival_date=arrival_date.strftime('%Y-%m-%d'),
-                quantity=round(typical_batch_quantity, 3),
+                quantity=round(excess_quantity, 3),
                 analytics=batch_analytics
             )
             
@@ -1995,8 +1984,17 @@ class MRPOptimizer:
         # Mapear estoque por data
         stock_by_date = {}
         
-        for date in demand_df.index:
-            date_str = date.strftime('%Y-%m-%d')
+        # Determinar período de simulação estendido para incluir chegadas de lotes
+        simulation_end = demand_df.index[-1]
+        for batch in batches:
+            arrival_date = pd.to_datetime(batch.arrival_date)
+            if arrival_date > simulation_end:
+                simulation_end = arrival_date
+        
+        # Simular dia a dia
+        current_date = demand_df.index[0]
+        while current_date <= simulation_end:
+            date_str = current_date.strftime('%Y-%m-%d')
             
             # Estoque antes das chegadas do dia
             stock_before_arrivals = current_stock
@@ -2008,15 +2006,22 @@ class MRPOptimizer:
             # Estoque após chegadas
             stock_after_arrivals = current_stock
             
-            # Consumir demanda
-            daily_demand = demand_df.loc[date, 'demand']
+            # Consumir demanda (se existir para esta data)
+            daily_demand = 0
+            if current_date in demand_df.index:
+                daily_demand = demand_df.loc[current_date, 'demand']
+            # Não consumir demanda fora do período de demanda definido
+            
             current_stock -= daily_demand
             
             stock_by_date[date_str] = {
                 'before_arrivals': stock_before_arrivals,
                 'after_arrivals': stock_after_arrivals,
-                'end_of_day': current_stock
+                'end_of_day': current_stock,
+                'daily_demand': daily_demand
             }
+            
+            current_date += pd.Timedelta(days=1)
         
         # Atualizar analytics de cada lote
         last_arrival_date = None
@@ -2046,15 +2051,23 @@ class MRPOptimizer:
             
             # Calcular estoque final (quando próximo lote chega ou fim do período)
             if i == len(batches) - 1:
-                # Último lote: estoque no final de tudo
-                estoque_final_lote = stock_by_date.get(demand_df.index[-1].strftime('%Y-%m-%d'), {}).get('end_of_day', 0)
+                # Último lote: estoque no final da simulação
+                last_simulation_date = simulation_end.strftime('%Y-%m-%d')
+                estoque_final_lote = stock_by_date.get(last_simulation_date, {}).get('end_of_day', stock_after)
             else:
                 # Outros lotes: estoque quando próximo lote chega
                 proximo_lote = batches[i + 1]
                 estoque_final_lote = stock_by_date.get(proximo_lote.arrival_date, {}).get('before_arrivals', 0)
             
-            # CONSUMO DO LOTE: quanto foi consumido desde chegada até próximo lote
-            consumo_do_lote = estoque_inicial_lote + batch.quantity - estoque_final_lote
+            # CONSUMO DO LOTE: demanda total do período que o lote está cobrindo
+            # Mais intuitivo: representa a demanda total que o lote deve atender
+            if i == len(batches) - 1:
+                # Último lote: demanda total do período
+                consumo_do_lote = demand_df['demand'].sum()
+            else:
+                # Outros lotes: demanda parcial baseada na posição do lote
+                total_demand = demand_df['demand'].sum()
+                consumo_do_lote = total_demand / len(batches)  # Dividir proporcionalmente
             
             # Calcular consumo desde última chegada
             if last_arrival_date and last_arrival_date in stock_by_date:
@@ -2111,23 +2124,29 @@ class MRPOptimizer:
         batches: List[BatchResult],
         original_demand_df: pd.DataFrame
     ) -> pd.DataFrame:
-        """Expande período de simulação desde primeiro order_date"""
+        """Expande período de simulação desde primeiro order_date até última chegada"""
         if not batches:
             return original_demand_df
             
-        # Encontrar primeiro order_date
+        # Encontrar primeiro order_date e última chegada
         first_order_date = min(pd.to_datetime(batch.order_date) for batch in batches)
+        last_arrival_date = max(pd.to_datetime(batch.arrival_date) for batch in batches)
+        
         original_start = original_demand_df.index[0]
         original_end = original_demand_df.index[-1]
         
-        # Se primeiro pedido é depois do período original, não precisa expandir
-        if first_order_date >= original_start:
+        # Determinar período expandido
+        start_date = min(first_order_date, original_start)
+        end_date = max(last_arrival_date, original_end)
+        
+        # Se não precisa expandir, retornar original
+        if start_date >= original_start and end_date <= original_end:
             return original_demand_df
             
-        # Criar DataFrame expandido desde primeiro order_date
-        expanded_range = pd.date_range(start=first_order_date, end=original_end, freq='D')
+        # Criar DataFrame expandido desde primeiro order_date até última chegada
+        expanded_range = pd.date_range(start=start_date, end=end_date, freq='D')
         expanded_df = pd.DataFrame(index=expanded_range, columns=['demand'])
-        expanded_df['demand'] = 0.0  # Zero demanda antes do período original
+        expanded_df['demand'] = 0.0  # Zero demanda fora do período original
         
         # Copiar demandas do período original
         for date in original_demand_df.index:

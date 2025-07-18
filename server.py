@@ -692,7 +692,8 @@ def mrp_optimize():
     - enable_consolidation: Habilitar consolidação de pedidos (padrão: True)
     - ignore_safety_stock: Ignorar completamente estoque de segurança (padrão: False)
     - exact_quantity_match: Garantir que estoque total (inicial + produzido) seja exatamente igual à demanda total (padrão: False)
-    - force_informative_batches: Forçar geração de batches informativos mesmo sem necessidade (padrão: False)
+    
+    - force_excess_production: Forçar produção real mesmo com estoque suficiente - sobreprodução (padrão: False)
     """
     try:
         data = request.get_json(force=True) or {}
@@ -780,7 +781,8 @@ def mrp_optimize():
             'exact_quantity_match',  # 🎯 NOVO: Garantir que estoque total (inicial + produzido) seja exatamente igual à demanda total
             'auto_calculate_max_batch_size',  # 🎯 NOVO: Auto-calculation do max_batch_size
             'max_batch_multiplier',  # 🎯 NOVO: Multiplicador do EOQ para auto-calculation
-            'force_informative_batches'  # 🎯 NOVO: Forçar geração de batches informativos mesmo sem necessidade
+    
+            'force_excess_production'  # 🎯 NOVO: Forçar produção real mesmo com estoque suficiente
         ]
         
         for param in optional_params:
