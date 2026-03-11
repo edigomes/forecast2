@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 from scipy.stats import zscore
 from feriados_brasil import FeriadosBrasil
+from holt_winters import HoltWintersModel, select_best_model
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,7 +46,7 @@ class ModeloAjustado:
                  feriados_enabled: bool = True,
                  feriados_adjustments: Optional[Dict[str, float]] = None,
                  anos_feriados: Optional[List[int]] = None,
-                 # NOVOS PARÂMETROS PARA EXPLICABILIDADE
+                 replicate_only: bool = False,
                  include_explanation: bool = False,
                  explanation_level: str = "basic",
                  explanation_language: str = "pt",
@@ -91,9 +92,9 @@ class ModeloAjustado:
         self.use_robust_stats = use_robust_stats
         self.month_adjustments = month_adjustments or {}
         self.day_of_week_adjustments = day_of_week_adjustments or {}
+        self.replicate_only = replicate_only
         self.models = {}
         
-        # NOVOS PARÂMETROS PARA EXPLICABILIDADE
         self.include_explanation = include_explanation
         self.explanation_level = explanation_level
         self.explanation_language = explanation_language
@@ -144,60 +145,125 @@ class ModeloAjustado:
             logger.warning(f"Dados insuficientes após limpeza: apenas {len(df)} pontos válidos")
             return df
         
-        # Detecção e tratamento de outliers mais conservador
-        if len(df) >= 10:  # Precisamos de mais pontos para detectar outliers com segurança
-            z_scores = zscore(df["y"])
-            outliers = abs(z_scores) > self.outlier_threshold
+        self._outlier_count = 0
+        
+        if len(df) >= 10:
+            values = df["y"].values
+            
+            z_outliers = np.abs(zscore(values)) > self.outlier_threshold
+            
+            Q1, Q3 = np.percentile(values, [25, 75])
+            IQR = Q3 - Q1
+            iqr_outliers = (values < Q1 - 1.5 * IQR) | (values > Q3 + 1.5 * IQR)
+            
+            median_val = np.median(values)
+            mad = np.median(np.abs(values - median_val))
+            if mad > 1e-6:
+                modified_z = 0.6745 * (values - median_val) / mad
+                mad_outliers = np.abs(modified_z) > self.outlier_threshold
+            else:
+                mad_outliers = np.zeros(len(values), dtype=bool)
+            
+            vote_count = z_outliers.astype(int) + iqr_outliers.astype(int) + mad_outliers.astype(int)
+            outliers = vote_count >= 2
             
             if any(outliers):
                 outlier_indices = np.where(outliers)[0]
-                logger.info(f"Detectados {sum(outliers)} outliers (z-score > {self.outlier_threshold})")
+                logger.info(f"Detectados {sum(outliers)} outliers (ensemble: Z-score={sum(z_outliers)}, IQR={sum(iqr_outliers)}, MAD={sum(mad_outliers)})")
                 
-                # Criar cópia para tratamento
                 df_fixed = df.copy()
                 
-                # Substituir outliers de forma mais conservadora
                 for idx in outlier_indices:
                     original = df["y"].iloc[idx]
                     
-                    # Usar janela de 5 pontos ou menos se não houver
                     window_start = max(0, idx - 2)
                     window_end = min(len(df), idx + 3)
                     
-                    # Remover o próprio outlier da janela
                     window_values = [df["y"].iloc[i] for i in range(window_start, window_end) if i != idx]
                     
                     if window_values:
-                        if self.use_robust_stats:
-                            replacement = np.median(window_values)
-                        else:
-                            replacement = np.mean(window_values)
+                        replacement = np.median(window_values) if self.use_robust_stats else np.mean(window_values)
                     else:
-                        # Fallback: usar a mediana global
                         replacement = df["y"].median()
                     
-                    logger.info(f"Outlier na posição {idx} (data: {df['ds'].iloc[idx].strftime('%Y-%m-%d')}): {original:.2f} substituído por {replacement:.2f}")
+                    logger.info(f"Outlier {idx} ({df['ds'].iloc[idx].strftime('%Y-%m-%d')}): {original:.2f} -> {replacement:.2f}")
                     df_fixed["y"].iloc[idx] = replacement
                 
-                # Salvar ambas as versões
                 self.original_data = df.copy()
+                self._outlier_count = int(sum(outliers))
                 return df_fixed
         else:
-            logger.info("Poucos dados para detecção confiável de outliers - mantendo dados originais")
+            logger.info("Poucos dados para detecção confiável de outliers")
         
         return df
+    
+    def _detect_seasonality(self, df: pd.DataFrame) -> Tuple[bool, float]:
+        """Detecta se há sazonalidade significativa usando autocorrelação."""
+        values = df["y"].values
+        n = len(values)
+        
+        if self.granularity == "M":
+            lag = 12
+        elif self.granularity == "S":
+            lag = 52
+        else:
+            lag = 7
+        
+        if n < lag + 4:
+            return (False, 0.0)
+        
+        mean_val = np.mean(values)
+        denom = np.sum((values - mean_val) ** 2)
+        if denom == 0:
+            return (False, 0.0)
+        
+        shifted = values[lag:]
+        original = values[:n - lag]
+        numerator = np.sum((original - mean_val) * (shifted - mean_val))
+        acf_value = numerator / denom
+        
+        significance_threshold = 2.0 / np.sqrt(n)
+        
+        is_seasonal = abs(acf_value) > significance_threshold
+        return (is_seasonal, abs(acf_value))
+    
+    def _calculate_data_completeness(self, df: pd.DataFrame) -> Dict:
+        """Calcula completude real baseada na frequência esperada."""
+        if len(df) < 2:
+            return {'completeness_pct': 100.0, 'expected_points': len(df),
+                    'actual_points': len(df), 'gap_count': 0}
+        
+        date_range = pd.date_range(df['ds'].min(), df['ds'].max(), freq=self.freq)
+        expected_points = len(date_range)
+        actual_points = len(df)
+        gap_count = max(0, expected_points - actual_points)
+        
+        pct = actual_points / max(expected_points, 1) * 100
+        
+        return {
+            'completeness_pct': round(pct, 1),
+            'expected_points': expected_points,
+            'actual_points': actual_points,
+            'gap_count': gap_count
+        }
     
     def _extract_seasonal_pattern(self, df: pd.DataFrame) -> Dict[int, float]:
         """Extrai o padrão sazonal dos dados com validações robustas"""
         logger.info("Extraindo padrão sazonal")
         
-        # Se temos poucos dados, usar padrão neutro
         if len(df) < 6:
             logger.warning(f"Poucos dados ({len(df)} pontos) para extrair padrão sazonal. Usando padrão neutro.")
             neutral_value = 1.0 if self.seasonality_mode == "multiplicative" else 0.0
             return {month: neutral_value for month in range(1, 13)}
         
-        # Calcular estatísticas globais
+        seasonality_detected, seasonality_strength = self._detect_seasonality(df)
+        if not seasonality_detected:
+            logger.info(f"Sazonalidade não detectada (strength={seasonality_strength:.3f}). Usando fatores neutros.")
+            neutral_value = 1.0 if self.seasonality_mode == "multiplicative" else 0.0
+            return {month: neutral_value for month in range(1, 13)}
+        
+        logger.info(f"Sazonalidade detectada (strength={seasonality_strength:.3f})")
+        
         if self.use_robust_stats:
             global_level = df["y"].median()
         else:
@@ -232,8 +298,9 @@ class ModeloAjustado:
                     factor = max(self.min_seasonal_factor, min(self.max_seasonal_factor, factor))
                 else:  # additive
                     factor = month_value - global_level
-                    # Para modo aditivo, limitar baseado no desvio padrão
-                    std_global = df["y"].std()
+                    std_global = df["y"].std() if len(df) > 1 else 0.0
+                    if pd.isna(std_global) or std_global <= 0:
+                        std_global = abs(global_level) * 0.5 if global_level != 0 else 1.0
                     factor = max(-2*std_global, min(2*std_global, factor))
                 
                 seasonal_pattern[month] = factor
@@ -424,7 +491,8 @@ class ModeloAjustado:
             # Calcular baseline (valor mínimo esperado)
             baseline = max(df["y"].quantile(0.05), 0.1)  # 5º percentil ou 0.1, o que for maior
             
-            # Armazenar parâmetros do modelo
+            historical_by_period = self._build_historical_by_period(df)
+            
             self.models[item_id] = {
                 "a": a,
                 "b": b,
@@ -434,11 +502,12 @@ class ModeloAjustado:
                 "last_date": df["ds"].iloc[-1],
                 "mean": df["y"].mean(),
                 "median": df["y"].median(),
-                "std": df["y"].std(),
+                "std": df["y"].std() if len(df) > 1 else 0.0,
                 "min": df["y"].min(),
                 "max": df["y"].max(),
                 "baseline": baseline,
-                "last_value": df["y"].iloc[-1]
+                "last_value": df["y"].iloc[-1],
+                "_historical_by_period": historical_by_period
             }
             
             # Verificar qualidade do ajuste
@@ -454,24 +523,29 @@ class ModeloAjustado:
             
             # Calcular métricas
             mae = np.mean(np.abs(df["y"] - df["prediction"]))
-            mape = np.mean(np.abs((df["y"] - df["prediction"]) / np.maximum(df["y"], 0.1))) * 100
+            mask_nonzero = df["y"] > 0
+            if mask_nonzero.any():
+                mape = np.mean(np.abs((df.loc[mask_nonzero, "y"] - df.loc[mask_nonzero, "prediction"]) / df.loc[mask_nonzero, "y"])) * 100
+            else:
+                mape = 0.0
             rmse = np.sqrt(np.mean((df["y"] - df["prediction"])**2))
             
-            # NOVAS MÉTRICAS PARA EXPLICABILIDADE
-            r2 = 1 - (np.sum((df["y"] - df["prediction"])**2) / np.sum((df["y"] - df["y"].mean())**2))
+            ss_res = np.sum((df["y"] - df["prediction"])**2)
+            ss_tot = np.sum((df["y"] - df["y"].mean())**2)
+            r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+            r2 = max(r2, 0.0)
+            
             data_points = len(df)
-            outliers_removed = hasattr(self, 'original_data') and len(getattr(self, 'original_data', [])) > len(df)
-            outlier_count = len(getattr(self, 'original_data', [])) - len(df) if outliers_removed else 0
+            outlier_count = getattr(self, '_outlier_count', 0)
             
-            # Calcular qualidade dos dados
-            data_completeness = (len(df) / max(len(df), 1)) * 100  # Simplificado
-            seasonal_strength = abs(df["y"].max() - df["y"].min()) / df["y"].mean() if df["y"].mean() > 0 else 0
-            trend_strength = abs(b) * len(df) / df["y"].mean() if df["y"].mean() > 0 else 0
+            completeness = self._calculate_data_completeness(df)
             
-            # Avaliar confiança da previsão
+            y_mean = df["y"].mean()
+            seasonal_strength = abs(df["y"].max() - df["y"].min()) / y_mean if y_mean > 0 else 0
+            trend_strength = abs(b) * len(df) / y_mean if y_mean > 0 else 0
+            
             confidence_score = "Alta" if mape < 15 and r2 > 0.7 else "Média" if mape < 30 and r2 > 0.4 else "Baixa"
             
-            # Armazenar métricas de qualidade para explicabilidade
             self.quality_metrics[item_id] = {
                 "mae": mae,
                 "mape": mape,
@@ -479,7 +553,8 @@ class ModeloAjustado:
                 "r2": r2,
                 "data_points": data_points,
                 "outlier_count": outlier_count,
-                "data_completeness": data_completeness,
+                "data_completeness": completeness['completeness_pct'],
+                "gap_count": completeness['gap_count'],
                 "seasonal_strength": seasonal_strength,
                 "trend_strength": trend_strength,
                 "confidence_score": confidence_score,
@@ -490,18 +565,21 @@ class ModeloAjustado:
                 }
             }
             
-            logger.info(f"Parâmetros do modelo:")
-            logger.info(f"  Tendência: a={a:.3f}, b={b:.3f}")
-            logger.info(f"  Baseline: {baseline:.2f}")
-            logger.info(f"Métricas de ajuste:")
-            logger.info(f"  MAE: {mae:.2f}")
-            logger.info(f"  RMSE: {rmse:.2f}")
-            logger.info(f"  MAPE: {mape:.2f}%")
-            logger.info(f"  R²: {r2:.3f}")
-            logger.info(f"  Confiança: {confidence_score}")
+            hw_model_name, hw_model, hw_mape = select_best_model(
+                df.set_index("ds")["y"],
+                df["prediction"].values.tolist(),
+                freq=self.freq,
+                seasonal_periods=12 if self.granularity == "M" else 52
+            )
             
+            self.models[item_id]["model_selected"] = hw_model_name
+            self.models[item_id]["hw_model"] = hw_model
+            self.quality_metrics[item_id]["model_selected"] = hw_model_name
+            if hw_model_name == 'holt_winters':
+                self.quality_metrics[item_id]["hw_mape"] = hw_mape
+            
+            logger.info(f"Modelo selecionado: {hw_model_name}")
             logger.info(f"Item {item_id}: Modelo treinado com sucesso")
-            logger.info(f"{'='*40}\n")
             return self
             
         except Exception as e:
@@ -522,6 +600,23 @@ class ModeloAjustado:
         
         return self
     
+    def _build_historical_by_period(self, df: pd.DataFrame) -> Dict:
+        """Constrói mapa de média histórica por período (mês, semana, dia da semana).
+        
+        Usado pelo modo replicate_only para replicar dados históricos sem modelagem.
+        """
+        result = {}
+        if self.granularity == "M":
+            grouped = df.groupby(df["ds"].dt.month)["y"].mean()
+            result = grouped.to_dict()
+        elif self.granularity == "S":
+            grouped = df.groupby(df["ds"].dt.isocalendar().week.astype(int))["y"].mean()
+            result = grouped.to_dict()
+        else:
+            grouped = df.groupby(df["ds"].dt.dayofweek)["y"].mean()
+            result = grouped.to_dict()
+        return result
+    
     def predict(self, item_id: int, start_date: str, periods: int) -> Optional[List[Dict]]:
         """Gera previsões para um item específico"""
         if item_id not in self.models:
@@ -539,43 +634,52 @@ class ModeloAjustado:
             a, b = model["a"], model["b"]
             seasonal_pattern = model["seasonal_pattern"]
             last_t = model["last_t"]
-            mean, std = model["mean"], model["std"]
+            mean = model["mean"]
+            std = model["std"] if not pd.isna(model["std"]) else 0.0
             min_val, max_val = model["min"], model["max"]
             baseline = model["baseline"]
             last_value = model["last_value"]
             
             logger.info(f"Parâmetros do modelo: a={a:.3f}, b={b:.3f}, baseline={baseline:.2f}")
             
-            # Gerar datas futuras
             start = pd.to_datetime(start_date)
             future_dates = pd.date_range(start=start, periods=periods, freq=self.freq)
             
+            import scipy.stats as scipy_stats
+            
             results = []
             
-            # Calcular tendência e ajustar pelo padrão sazonal
+            if self.replicate_only:
+                return self._predict_replicate_only(item_id, future_dates, model)
+            
+            hw_model = model.get("hw_model")
+            model_selected = model.get("model_selected", "decomposition")
+            hw_forecasts = None
+            if model_selected == "holt_winters" and hw_model is not None:
+                hw_forecasts = hw_model.predict(periods)
+            
             for i, date in enumerate(future_dates, start=1):
                 t_future = last_t + i
                 
-                # Tendência linear
                 trend = a + b * t_future
-                
-                # Garantir que a tendência não fique muito baixa
                 trend = max(trend, baseline * 0.5)
                 
-                # Fator sazonal
                 month = date.month
                 seasonal = seasonal_pattern.get(month, 1.0 if self.seasonality_mode == "multiplicative" else 0.0)
                 
-                # Previsão combinada
                 if self.seasonality_mode == "multiplicative":
                     prediction = trend * seasonal
                     seasonal_component = prediction - trend
-                else:  # additive
+                else:
                     prediction = trend + seasonal
                     seasonal_component = seasonal
                     
-                # Aplicar fator de crescimento global
                 prediction = prediction * self.growth_factor
+                
+                if hw_forecasts is not None and i - 1 < len(hw_forecasts):
+                    hw_val = float(hw_forecasts.iloc[i - 1])
+                    if hw_val > 0:
+                        prediction = hw_val
                 
                 # Aplicar ajustes específicos por mês
                 month_adjustment = self.month_adjustments.get(date.month, 1.0)
@@ -624,13 +728,16 @@ class ModeloAjustado:
                     logger.warning(f"Previsão para {date.strftime('%Y-%m-%d')} limitada: {prediction:.2f} -> {max_reasonable:.2f}")
                     prediction = max_reasonable
                 
-                # Calcular intervalos de confiança
-                import scipy.stats as stats
-                z_score = stats.norm.ppf((1 + self.confidence_level) / 2)
-                adjusted_std = std * self.confidence_factor
+                z_score = scipy_stats.norm.ppf((1 + self.confidence_level) / 2)
+                horizon_factor = np.sqrt(1 + (i - 1) * 0.1)
+                adjusted_std = std * self.confidence_factor * horizon_factor
                 
-                lower = max(baseline * 0.5, prediction - z_score * adjusted_std)  # Garantir mínimo
+                lower = max(baseline * 0.5, prediction - z_score * adjusted_std)
                 upper = prediction + z_score * adjusted_std
+                if lower > upper:
+                    lower, upper = upper, lower
+                if lower == upper:
+                    upper = prediction * 1.1 if prediction > 0 else 1.0
                 
                 # Criar resultado base
                 result = {
@@ -672,6 +779,64 @@ class ModeloAjustado:
         except Exception as e:
             logger.exception(f"Erro ao gerar previsão para item {item_id}")
             raise ValueError(f"Falha ao gerar previsão para item {item_id}: {str(e)}")
+    
+    def _predict_replicate_only(self, item_id: int, future_dates, model: Dict) -> List[Dict]:
+        """Replica os dados históricos nos períodos futuros, aplicando apenas growth_factor.
+        
+        Usa a média histórica por mês (mensal), por semana do ano (semanal),
+        ou por dia da semana (diário) como base, aplicando apenas o growth_factor.
+        """
+        historical_data = model.get("_historical_by_period", {})
+        mean = model["mean"]
+        baseline = model["baseline"]
+        std = model["std"] if not pd.isna(model.get("std", 0)) else 0.0
+        
+        import scipy.stats as scipy_stats
+        z_score = scipy_stats.norm.ppf((1 + self.confidence_level) / 2)
+        
+        results = []
+        for i, date in enumerate(future_dates, start=1):
+            if self.granularity == "M":
+                period_key = date.month
+            elif self.granularity == "S":
+                period_key = date.isocalendar()[1]
+            else:
+                period_key = date.weekday()
+            
+            base_value = historical_data.get(period_key, mean)
+            prediction = base_value * self.growth_factor
+            prediction = max(prediction, baseline * 0.5)
+            
+            adjusted_std = std * self.confidence_factor
+            lower = max(0, prediction - z_score * adjusted_std)
+            upper = prediction + z_score * adjusted_std
+            
+            result = {
+                "item_id": item_id,
+                "ds": date.strftime("%Y-%m-%d %H:%M:%S"),
+                "yhat": round(prediction, 2),
+                "yhat_lower": round(lower, 2),
+                "yhat_upper": round(upper, 2),
+                "trend": round(prediction, 2),
+                "yearly": 0.0,
+                "weekly": 0.0,
+                "holidays": 0.0,
+                "replicate_only": True
+            }
+            
+            if self.include_explanation:
+                explanation = self._generate_explanation(item_id, result, date)
+                if explanation:
+                    result["_explanation"] = explanation
+            
+            html_data = self._generate_html_data(item_id, result, date, is_quarterly=False, is_semiannual=False)
+            if html_data:
+                result["_html_data"] = html_data
+            
+            results.append(result)
+        
+        logger.info(f"Replicação simples gerada para {len(results)} períodos (growth_factor={self.growth_factor})")
+        return results
     
     def predict_multiple(self, items: List[int], start_date: str, periods: int) -> List[Dict]:
         """Gera previsões para múltiplos itens"""
@@ -942,13 +1107,14 @@ class ModeloAjustado:
         model = self.models[item_id]
         metrics = self.quality_metrics[item_id]
         
-        # Valores da previsão
         yhat = prediction['yhat']
         trend = prediction['trend']
         yearly = prediction['yearly']
         confidence_range = prediction['yhat_upper'] - prediction['yhat_lower']
         
-        # Templates de explicação em português
+        if self.replicate_only:
+            return self._generate_replicate_explanation(item_id, prediction, date, model, metrics)
+        
         explanations = {
             "pt": {
                 "summary": self._generate_summary_pt(yhat, metrics, date),
@@ -1013,6 +1179,54 @@ class ModeloAjustado:
                 }
             }
     
+    def _generate_replicate_explanation(self, item_id: int, prediction: Dict,
+                                       date: pd.Timestamp, model: Dict, metrics: Dict) -> Dict:
+        """Gera explicação para previsões no modo replicate_only."""
+        yhat = prediction['yhat']
+        confidence_range = prediction['yhat_upper'] - prediction['yhat_lower']
+        month_name = self._get_month_name_pt(date.month)
+        growth_pct = (self.growth_factor - 1) * 100
+        
+        html_summary = self._generate_html_summary(item_id, prediction, date, layout=self.html_layout)
+        
+        summary = (
+            f"Replicação de {yhat:.0f} unidades para {month_name} "
+            f"baseada na média histórica de {metrics['data_points']} períodos"
+        )
+        if self.growth_factor != 1.0:
+            summary += f" com fator de crescimento de {growth_pct:+.1f}%"
+        summary += "."
+        
+        base = {
+            "html_summary": html_summary,
+            "summary": summary,
+            "mode": "replicate_only",
+            "confidence": metrics['confidence_score'],
+            "growth_factor": self.growth_factor,
+            "historical_mean": round(model.get('mean', 0), 2)
+        }
+        
+        if self.explanation_level in ("detailed", "advanced"):
+            base["confidence_explanation"] = (
+                f"Intervalo de ±{confidence_range/2:.0f} unidades baseado "
+                f"na variabilidade histórica dos dados"
+            )
+            base["data_quality_summary"] = {
+                "historical_periods": metrics['data_points'],
+                "confidence": metrics['confidence_score'],
+                "accuracy": f"{100-metrics['mape']:.1f}%"
+            }
+        
+        if self.explanation_level == "advanced":
+            base["technical_metrics"] = {
+                "mae": round(metrics['mae'], 2),
+                "mape": f"{metrics['mape']:.1f}%",
+                "r2": round(metrics['r2'], 3),
+                "historical_std": round(model.get('std', 0), 2)
+            }
+        
+        return base
+    
     def _generate_summary_pt(self, yhat: float, metrics: Dict, date: pd.Timestamp) -> str:
         """Gera resumo em português"""
         months = metrics['data_points']
@@ -1073,6 +1287,37 @@ class ModeloAjustado:
             "base_trend": f"Valor base da tendência: {trend:.1f}",
             "seasonal_adjustment": f"Ajuste sazonal aplicado: {yearly:+.1f}"
         }
+    
+    def _build_seasonal_description(self, is_quarterly: bool, is_semiannual: bool,
+                                     period_name: str, date: pd.Timestamp,
+                                     yearly: float, trend: float, model: Dict) -> str:
+        """Constrói descrição textual do ajuste sazonal para os HTMLs."""
+        if is_quarterly:
+            return f"Padrão sazonal do {period_name}"
+        if is_semiannual:
+            return f"Padrão sazonal do {period_name}"
+        
+        month_name = self._get_month_name_pt(date.month)
+        if self.seasonality_mode == "multiplicative":
+            seasonal_pattern = model.get('seasonal_pattern', {})
+            factor = seasonal_pattern.get(date.month, seasonal_pattern.get(str(date.month), 1.0))
+            if factor > 1.05:
+                return f"{month_name}: +{(factor-1)*100:.0f}% acima da média ({yearly:+.0f} unidades)"
+            elif factor < 0.95:
+                return f"{month_name}: {(1-factor)*100:.0f}% abaixo da média ({yearly:+.0f} unidades)"
+            else:
+                if abs(yearly) > 10:
+                    percentage_change = (factor - 1) * 100
+                    return f"{month_name}: {percentage_change:+.1f}% da média ({yearly:+.0f} unidades)"
+                return f"{month_name}: próximo à média histórica ({yearly:+.0f} unidades)"
+        else:
+            if yearly > 10:
+                percentage = (yearly / trend) * 100 if trend > 0 else 0
+                return f"{month_name}: +{yearly:.0f} unidades acima da média (+{percentage:.0f}%)"
+            elif yearly < -10:
+                percentage = abs(yearly / trend) * 100 if trend > 0 else 0
+                return f"{month_name}: {yearly:.0f} unidades abaixo da média (-{percentage:.0f}%)"
+            return f"{month_name}: próximo à média histórica ({yearly:+.0f} unidades)"
     
     def _generate_data_quality_pt(self, metrics: Dict) -> Dict:
         """Explica a qualidade dos dados em português"""
@@ -1311,7 +1556,27 @@ class ModeloAjustado:
             html += "</div></div>"
         
         # Componentes da Previsão
-        html += f"""
+        if self.replicate_only:
+            growth_pct = (self.growth_factor - 1) * 100
+            growth_desc = f"+{growth_pct:.1f}%" if growth_pct > 0 else f"{growth_pct:.1f}%" if growth_pct < 0 else "Sem ajuste"
+            html += f"""
+            <!-- Componentes da Previsão (Replicação) -->
+            <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">🔍 Como chegamos neste valor?</h3>
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 6px; border-left: 4px solid #4caf50; margin-bottom: 10px;">
+                    <h4 style="margin: 0 0 8px 0; color: #2e7d32; font-size: 16px;">📋 Replicação de Histórico</h4>
+                    <p style="margin: 0; font-size: 14px; color: #1b5e20;">
+                        Valor baseado na <strong>média histórica do período correspondente</strong>, sem modelagem estatística.
+                    </p>
+                    <p style="margin: 8px 0 0 0; font-size: 14px; color: #1b5e20;">
+                        Média histórica: <strong>{model.get('mean', 0):,.1f}</strong> •
+                        Fator de crescimento: <strong>{self.growth_factor:.2f}</strong> ({growth_desc})
+                    </p>
+                </div>
+            </div>
+            """
+        else:
+            html += f"""
             <!-- Componentes da Previsão -->
             <div style="background: white; padding: 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">🔍 Como chegamos neste valor?</h3>
@@ -1320,65 +1585,32 @@ class ModeloAjustado:
                     <div style="background: #e3f2fd; padding: 15px; border-radius: 6px; border-left: 4px solid #2196f3;">
                         <h4 style="margin: 0 0 8px 0; color: #1565c0; font-size: 16px;">📈 Tendência Base</h4>
                         <p style="margin: 0; font-size: 18px; font-weight: bold; color: #0d47a1;">{trend:,.1f} unidades</p>
-        """
-        
-        # Explicação da tendência
-        b = model['b']
-        if abs(b) < 0.1:
-            trend_desc = "Estável - sem crescimento significativo"
-        elif b > 0:
-            trend_desc = f"Crescimento de {b:,.1f} un/mês ({b*12:,.1f} un/ano)"
-        else:
-            trend_desc = f"Declínio de {abs(b):,.1f} un/mês ({abs(b)*12:,.1f} un/ano)"
-        
-        html += f"""
+            """
+            
+            b = model['b']
+            if abs(b) < 0.1:
+                trend_desc = "Estável - sem crescimento significativo"
+            elif b > 0:
+                trend_desc = f"Crescimento de {b:,.1f} un/mês ({b*12:,.1f} un/ano)"
+            else:
+                trend_desc = f"Declínio de {abs(b):,.1f} un/mês ({abs(b)*12:,.1f} un/ano)"
+            
+            seasonal_desc = self._build_seasonal_description(
+                is_quarterly, is_semiannual, period_name, date, yearly, trend, model
+            )
+            
+            html += f"""
                         <p style="margin: 5px 0 0 0; font-size: 13px; color: #1565c0;">{trend_desc}</p>
                     </div>
                     
                     <div style="background: #fff3e0; padding: 15px; border-radius: 6px; border-left: 4px solid #ff9800;">
                         <h4 style="margin: 0 0 8px 0; color: #e65100; font-size: 16px;">🔄 Ajuste Sazonal</h4>
                         <p style="margin: 0; font-size: 18px; font-weight: bold; color: #bf360c;">{yearly:+,.1f} unidades</p>
-        """
-        
-        # Explicação sazonal
-        if is_quarterly:
-            seasonal_desc = f"Padrão sazonal do {period_name}"
-        elif is_semiannual:
-            seasonal_desc = f"Padrão sazonal do {period_name}"
-        else:
-            month_name = self._get_month_name_pt(date.month)
-            if self.seasonality_mode == "multiplicative":
-                seasonal_pattern = model.get('seasonal_pattern', {})
-                # Tentar acessar com chave inteira primeiro, depois string (compatibilidade)
-                factor = seasonal_pattern.get(date.month, seasonal_pattern.get(str(date.month), 1.0))
-                if factor > 1.05:
-                    seasonal_desc = f"{month_name}: +{(factor-1)*100:.0f}% acima da média ({yearly:+.0f} unidades)"
-                elif factor < 0.95:
-                    seasonal_desc = f"{month_name}: {(1-factor)*100:.0f}% abaixo da média ({yearly:+.0f} unidades)"
-                else:
-                    # Mesmo quando está "próximo à média", mostrar o valor se for significativo
-                    if abs(yearly) > 10:  # Se o ajuste for significativo (>10 unidades)
-                        percentage_change = (factor - 1) * 100
-                        seasonal_desc = f"{month_name}: {percentage_change:+.1f}% da média ({yearly:+.0f} unidades)"
-                    else:
-                        seasonal_desc = f"{month_name}: próximo à média histórica ({yearly:+.0f} unidades)"
-            else:  # additive
-                if yearly > 10:
-                    # Calcular percentual baseado na tendência base
-                    percentage = (yearly / trend) * 100 if trend > 0 else 0
-                    seasonal_desc = f"{month_name}: +{yearly:.0f} unidades acima da média (+{percentage:.0f}%)"
-                elif yearly < -10:
-                    percentage = abs(yearly / trend) * 100 if trend > 0 else 0
-                    seasonal_desc = f"{month_name}: {yearly:.0f} unidades abaixo da média (-{percentage:.0f}%)"
-                else:
-                    seasonal_desc = f"{month_name}: próximo à média histórica ({yearly:+.0f} unidades)"
-        
-        html += f"""
                         <p style="margin: 5px 0 0 0; font-size: 13px; color: #e65100;">{seasonal_desc}</p>
                     </div>
                 </div>
             </div>
-        """
+            """
         
         # Qualidade dos Dados
         accuracy = 100 - metrics['mape']
@@ -1450,7 +1682,7 @@ class ModeloAjustado:
                         <strong>Período de treino:</strong> {training_start} a {training_end}
                     </div>
                     <div>
-                        <strong>Modelo:</strong> {self.seasonality_mode.title()} • 
+                        <strong>Modo:</strong> {"Replicação Simples" if self.replicate_only else self.seasonality_mode.title()} • 
                         <strong>MAPE:</strong> {metrics['mape']:.1f}% • 
                         <strong>R²:</strong> {metrics['r2']:.3f}
                     </div>
@@ -1571,8 +1803,21 @@ class ModeloAjustado:
             
             html += "</div></div>"
         
-        # Componentes Compactos
-        html += f"""
+        if self.replicate_only:
+            growth_pct = (self.growth_factor - 1) * 100
+            growth_label = f"+{growth_pct:.0f}%" if growth_pct > 0 else f"{growth_pct:.0f}%" if growth_pct < 0 else "0%"
+            html += f"""
+            <!-- Componentes Compactos (Replicação) -->
+            <div style="margin-bottom: 15px;">
+                <div style="text-align: center; padding: 10px; background: #e8f5e9; border-radius: 6px; border-left: 3px solid #4caf50;">
+                    <div style="font-size: 11px; color: #2e7d32; font-weight: bold;">📋 Replicação</div>
+                    <div style="font-size: 14px; font-weight: bold; color: #1b5e20;">Média histórica x {self.growth_factor:.2f}</div>
+                    <div style="font-size: 9px; color: #2e7d32;">Crescimento: {growth_label}</div>
+                </div>
+            </div>
+            """
+        else:
+            html += f"""
             <!-- Componentes Compactos -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
                 <div style="text-align: center; padding: 10px; background: #e3f2fd; border-radius: 6px; border-left: 3px solid #2196f3;">
@@ -1587,7 +1832,7 @@ class ModeloAjustado:
                     <div style="font-size: 9px; color: #e65100;">{seasonal_desc}</div>
                 </div>
             </div>
-        """
+            """
         
         # Fatores principais (máximo 2)
         factors = self._generate_factors_explanation_pt(item_id, date, model)
@@ -1616,12 +1861,12 @@ class ModeloAjustado:
             </div>
             """
         
-        # Rodapé compacto
+        mode_label = "Replicação" if self.replicate_only else "Modelo"
         html += f"""
             <!-- Rodapé Compacto -->
             <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #dee2e6; text-align: center;">
                 <div style="font-size: 9px; color: #6c757d;">
-                    {metrics['data_points']} períodos • MAPE: {metrics['mape']:.1f}% • R²: {metrics['r2']:.2f}
+                    {mode_label} • {metrics['data_points']} períodos • MAPE: {metrics['mape']:.1f}% • R²: {metrics['r2']:.2f}
                 </div>
             </div>
         </div>
@@ -1706,7 +1951,7 @@ class ModeloAjustado:
                     "monthly_seasonals": [round(s, 1) for s in monthly_seasonals],
                     "monthly_average": round(monthly_avg, 1),
                     "monthly_std": round(np.std(monthly_values), 1),
-                    "coefficient_variation": f"{(np.std(monthly_values)/monthly_avg)*100:.1f}%"
+                    "coefficient_variation": f"{(np.std(monthly_values)/monthly_avg)*100:.1f}%" if monthly_avg > 0 else "N/A"
                 },
                 "trend_analysis": {
                     "quarterly_trend": quarterly_result['trend'],
@@ -1720,7 +1965,7 @@ class ModeloAjustado:
                 },
                 "confidence_analysis": {
                     "quarterly_interval": f"±{(quarterly_result['yhat_upper'] - quarterly_result['yhat_lower'])/2:.0f}",
-                    "relative_uncertainty": f"{((quarterly_result['yhat_upper'] - quarterly_result['yhat_lower'])/quarterly_result['yhat'])*100:.1f}%",
+                    "relative_uncertainty": f"{((quarterly_result['yhat_upper'] - quarterly_result['yhat_lower'])/quarterly_result['yhat'])*100:.1f}%" if quarterly_result['yhat'] > 0 else "N/A",
                     "confidence_source": "Agregação dos intervalos mensais"
                 },
                 "technical_metrics": {
@@ -1742,7 +1987,8 @@ class ModeloAjustado:
         if len(monthly_values) < 3:
             return "Dados insuficientes para análise"
         
-        variation = (max(monthly_values) - min(monthly_values)) / np.mean(monthly_values)
+        mean_val = np.mean(monthly_values)
+        variation = (max(monthly_values) - min(monthly_values)) / mean_val if mean_val > 0 else 0
         
         if variation < 0.1:
             return f"Demanda estável ao longo do {quarter_name}"
@@ -1849,22 +2095,20 @@ class ModeloAjustado:
             "freq": self.freq
         }
         
-        # Dados completos para geração de HTML
         html_data = {
             "item_id": item_id,
             "prediction": prediction_data,
             "explanation_data": explanation_data,
             "is_quarterly": is_quarterly,
             "is_semiannual": is_semiannual,
+            "replicate_only": self.replicate_only,
             "date_iso": date.isoformat(),
             "timestamp": date.timestamp()
         }
         
-        # Adicionar informações trimestrais se aplicável
         if is_quarterly and quarterly_info:
             html_data["quarterly_info"] = quarterly_info
             
-        # Adicionar informações semestrais se aplicável
         if is_semiannual and semiannual_info:
             html_data["semiannual_info"] = semiannual_info
             
@@ -1947,7 +2191,7 @@ class ModeloAjustado:
                     "monthly_seasonals": [round(s, 1) for s in monthly_seasonals],
                     "monthly_average": round(monthly_avg, 1),
                     "monthly_std": round(np.std(monthly_values), 1),
-                    "coefficient_variation": f"{(np.std(monthly_values)/monthly_avg)*100:.1f}%"
+                    "coefficient_variation": f"{(np.std(monthly_values)/monthly_avg)*100:.1f}%" if monthly_avg > 0 else "N/A"
                 },
                 "trend_analysis": {
                     "semiannual_trend": semiannual_result['trend'],
@@ -1961,7 +2205,7 @@ class ModeloAjustado:
                 },
                 "confidence_analysis": {
                     "semiannual_interval": f"±{(semiannual_result['yhat_upper'] - semiannual_result['yhat_lower'])/2:.0f}",
-                    "relative_uncertainty": f"{((semiannual_result['yhat_upper'] - semiannual_result['yhat_lower'])/semiannual_result['yhat'])*100:.1f}%",
+                    "relative_uncertainty": f"{((semiannual_result['yhat_upper'] - semiannual_result['yhat_lower'])/semiannual_result['yhat'])*100:.1f}%" if semiannual_result['yhat'] > 0 else "N/A",
                     "confidence_source": "Agregação dos intervalos mensais"
                 },
                 "technical_metrics": {
@@ -1983,7 +2227,8 @@ class ModeloAjustado:
         if len(monthly_values) < 6:
             return "Dados insuficientes para análise"
         
-        variation = (max(monthly_values) - min(monthly_values)) / np.mean(monthly_values)
+        mean_val = np.mean(monthly_values)
+        variation = (max(monthly_values) - min(monthly_values)) / mean_val if mean_val > 0 else 0
         
         if variation < 0.1:
             return f"Demanda estável ao longo do {semester_name}"

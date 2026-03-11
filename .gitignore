@@ -4,5 +4,11 @@
 /venv
 /__pycache__
 /python
+*.pyc
+
 mrp_advanced_results.json
 mrp_results_completos.json
+mrp_sporadic_results.json
+mrp_results_corrigidos.json
+mrp_result_with_intelligent_batch_sizes.json
+resultado_*.json

@@ -1,23 +1,12 @@
 from flask import Flask, request, jsonify
-#from flask_cors import CORS
 import pandas as pd
 import logging
 import json
 import traceback
 from modelo import ModeloAjustado
-from feriados_brasil import FeriadosBrasil
 from mrp import MRPOptimizer, OptimizationParams
 
 app = Flask(__name__)
-
-# Configurar CORS para permitir requests de qualquer URL
-#CORS(app, resources={
-#    r"/*": {
-#        "origins": "*",  # Permite qualquer origem
-#        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Métodos permitidos
-#        "allow_headers": ["Content-Type", "Accept", "Authorization", "X-Requested-With"]  # Headers permitidos
-#    }
-#})
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,74 +14,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def convert_numpy_types(obj):
+    """Converte tipos numpy para tipos nativos do Python para serialização JSON"""
+    if isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    elif hasattr(obj, 'item'):
+        return obj.item()
+    elif hasattr(obj, 'tolist'):
+        return obj.tolist()
+    else:
+        return obj
+
 @app.route('/predict', methods=['POST'])
 def predict():
     data = request.get_json(force=True) or {}
     
-    # Log COMPLETO dos dados de entrada
-    logger.info("="*80)
-    logger.info("DADOS DE ENTRADA COMPLETOS:")
-    logger.info("-"*80)
-    logger.info(f"granularidade: {data.get('granularidade', 'M')}")
-    logger.info(f"periodos: {data.get('periodos', 0)}")
-    logger.info(f"data_inicio: {data.get('data_inicio', '')}")
-    logger.info(f"agrupamento_trimestral: {data.get('agrupamento_trimestral', False)}")
-    logger.info(f"agrupamento_semestral: {data.get('agrupamento_semestral', False)}")
-    logger.info(f"seasonal_smooth (se houver): {data.get('seasonal_smooth', 'não informado')}")
-    logger.info(f"seasonality_mode (se houver): {data.get('seasonality_mode', 'não informado')}")
-    logger.info(f"confidence_level (se houver): {data.get('confidence_level', 'não informado')}")
-    logger.info(f"confidence_factor (se houver): {data.get('confidence_factor', 'não informado')}")
-    logger.info(f"growth_factor (se houver): {data.get('growth_factor', 'não informado')}")
-    logger.info(f"month_adjustments (se houver): {data.get('month_adjustments', 'não informado')}")
-    logger.info(f"day_of_week_adjustments (se houver): {data.get('day_of_week_adjustments', 'não informado')}")
-    logger.info(f"feriados_enabled (se houver): {data.get('feriados_enabled', 'não informado')}")
-    logger.info(f"feriados_adjustments (se houver): {data.get('feriados_adjustments', 'não informado')}")
-    logger.info(f"anos_feriados (se houver): {data.get('anos_feriados', 'não informado')}")
-    logger.info(f"include_explanation (se houver): {data.get('include_explanation', 'não informado')}")
-    logger.info(f"explanation_level (se houver): {data.get('explanation_level', 'não informado')}")
-    logger.info(f"explanation_language (se houver): {data.get('explanation_language', 'não informado')}")
-    
-    # Log COMPLETO dos dados de vendas
     sales_data = data.get("sales_data", [])
-    if sales_data:
-        logger.info(f"Quantidade de registros: {len(sales_data)}")
-        logger.info("DADOS COMPLETOS DE VENDAS:")
-        
-        # Salvar dados completos em um arquivo JSON
-        with open('dados_entrada_completos.json', 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-        logger.info(f"Dados completos salvos em 'dados_entrada_completos.json'")
-        
-        # Exibir dados completos nos logs
-        logger.info(f"\nTODOS OS REGISTROS DE VENDAS:\n{json.dumps(sales_data, indent=2)}")
-        
-        # Análise dos dados
-        if sales_data and isinstance(sales_data, list):
-            df = pd.DataFrame(sales_data)
-            if "item_id" in df.columns:
-                unique_items = df["item_id"].unique().tolist()
-                logger.info(f"item_ids únicos ({len(unique_items)}): {unique_items}")
-                
-                # Estatísticas detalhadas por item_id
-                for item in unique_items:
-                    item_df = df[df['item_id'] == item]
-                    logger.info(f"\nEstatísticas para item_id {item}:")
-                    logger.info(f"  Número de registros: {len(item_df)}")
-                    if 'timestamp' in item_df.columns:
-                        dates = pd.to_datetime(item_df['timestamp'])
-                        logger.info(f"  Período: {min(dates)} a {max(dates)}")
-                        logger.info(f"  Intervalo: {(max(dates) - min(dates)).days} dias")
-                    if 'demand' in item_df.columns:
-                        try:
-                            demands = pd.to_numeric(item_df['demand'], errors='coerce')
-                            logger.info(f"  Demanda mínima: {demands.min()}")
-                            logger.info(f"  Demanda máxima: {demands.max()}")
-                            logger.info(f"  Demanda média: {demands.mean():.2f}")
-                            logger.info(f"  Demanda total: {demands.sum():.2f}")
-                        except Exception as e:
-                            logger.error(f"Erro ao calcular estatísticas: {e}")
-    
-    logger.info("-"*80)
+    logger.info(f"Predict chamado - registros: {len(sales_data) if sales_data else 0}")
 
     # Validações
     gran = data.get("granularidade", "M").upper()
@@ -115,14 +56,14 @@ def predict():
 
     try:
         periods = int(data.get("periodos", 0))
-    except:
+    except (ValueError, TypeError):
         return jsonify({"error":"'periodos' deve ser inteiro."}), 400
     if periods < 1:
         return jsonify({"error":"'periodos' deve ser >= 1."}), 400
 
     try:
         start_date = pd.to_datetime(data.get("data_inicio",""), format="%Y-%m-%d")
-    except:
+    except (ValueError, TypeError):
         return jsonify({"error":"'data_inicio' inválido. Use YYYY-MM-DD."}), 400
 
     if not isinstance(sales_data, list) or not sales_data:
@@ -152,6 +93,7 @@ def predict():
         
         # Parâmetros de ajuste de valores
         growth_factor = float(data.get("growth_factor", 1.0))
+        replicate_only = bool(data.get("replicate_only", False))
         
         # Ajustes específicos por mês
         month_adjustments = data.get("month_adjustments", {})
@@ -234,11 +176,12 @@ def predict():
             granularity=gran, 
             seasonality_mode=seasonality_mode,
             seasonal_smooth=seasonal_smooth,
-            outlier_threshold=2.5,  # Default sensível para detectar outliers
-            trend_window=3,  # Janela de média móvel para suavizar tendência
+            outlier_threshold=2.5,
+            trend_window=3,
             confidence_level=confidence_level,
             confidence_factor=confidence_factor,
             growth_factor=growth_factor,
+            replicate_only=replicate_only,
             month_adjustments=month_adjustments,
             day_of_week_adjustments=day_of_week_adjustments,
             feriados_enabled=feriados_enabled,
@@ -275,87 +218,8 @@ def predict():
                 periods=periods
             )
         
-        # Log COMPLETO da saída
-        logger.info("="*80)
-        logger.info("RESULTADOS COMPLETOS DA PREVISÃO:")
-        logger.info("-"*80)
-        logger.info(f"Total de previsões geradas: {len(forecast_results)}")
-        tipo_agrupamento = "Trimestral" if agrupamento_trimestral else "Semestral" if agrupamento_semestral else "Individual"
-        logger.info(f"Tipo de agrupamento: {tipo_agrupamento}")
+        logger.info(f"Previsão concluída - {len(forecast_results)} resultados gerados")
         
-        # Salvar resultados completos em um arquivo JSON (com info adicional para logs)
-        output_data_for_logs = {
-            "forecast": forecast_results,
-            "agrupamento_trimestral": agrupamento_trimestral,
-            "agrupamento_semestral": agrupamento_semestral
-        }
-        with open('resultados_completos.json', 'w', encoding='utf-8') as f:
-            json.dump(output_data_for_logs, f, ensure_ascii=False, indent=4)
-        logger.info(f"Resultados completos salvos em 'resultados_completos.json'")
-        
-        # Agrupar por item_id para um log mais organizado
-        results_by_item = {}
-        for result in forecast_results:
-            item_id = result["item_id"]
-            if item_id not in results_by_item:
-                results_by_item[item_id] = []
-            results_by_item[item_id].append(result)
-        
-        # Log COMPLETO por item
-        for item_id, forecasts in results_by_item.items():
-            if agrupamento_trimestral:
-                period_type = "trimestres"
-            elif agrupamento_semestral:
-                period_type = "semestres"
-            else:
-                period_type = "períodos"
-            logger.info(f"\nItem {item_id}: {len(forecasts)} {period_type} previstos")
-            logger.info(f"TODOS OS {period_type.upper()} PARA ITEM {item_id}:")
-            logger.info(json.dumps(forecasts, indent=2))
-            
-            # Análise estatística dos resultados
-            if forecasts:
-                yhats = [f['yhat'] for f in forecasts]
-                
-                if agrupamento_trimestral:
-                    logger.info(f"\nEstatísticas das previsões trimestrais para item {item_id}:")
-                    logger.info(f"  Valor mínimo previsto por trimestre: {min(yhats)}")
-                    logger.info(f"  Valor máximo previsto por trimestre: {max(yhats)}")
-                    logger.info(f"  Valor médio por trimestre: {sum(yhats)/len(yhats):.2f}")
-                    logger.info(f"  Total previsto para todos os trimestres: {sum(yhats):.2f}")
-                elif agrupamento_semestral:
-                    logger.info(f"\nEstatísticas das previsões semestrais para item {item_id}:")
-                    logger.info(f"  Valor mínimo previsto por semestre: {min(yhats)}")
-                    logger.info(f"  Valor máximo previsto por semestre: {max(yhats)}")
-                    logger.info(f"  Valor médio por semestre: {sum(yhats)/len(yhats):.2f}")
-                    logger.info(f"  Total previsto para todos os semestres: {sum(yhats):.2f}")
-                else:
-                    trends = [f['trend'] for f in forecasts]
-                    yearlys = [f['yearly'] for f in forecasts]
-                    
-                    logger.info(f"\nEstatísticas das previsões para item {item_id}:")
-                    logger.info(f"  Valor mínimo previsto: {min(yhats)}")
-                    logger.info(f"  Valor máximo previsto: {max(yhats)}")
-                    logger.info(f"  Valor médio previsto: {sum(yhats)/len(yhats):.2f}")
-                    logger.info(f"  Tendência inicial: {trends[0]}")
-                    logger.info(f"  Tendência final: {trends[-1]}")
-                    logger.info(f"  Variação da tendência: {trends[-1] - trends[0]:.2f} ({(trends[-1]/trends[0]-1)*100:.2f}%)")
-                    logger.info(f"  Contribuição sazonal mínima: {min(yearlys)}")
-                    logger.info(f"  Contribuição sazonal máxima: {max(yearlys)}")
-        
-        logger.info("="*80)
-        logger.info("Previsão concluída com sucesso")
-        
-        # Salvar tanto a entrada quanto a saída em um único arquivo para referência
-        combined_data = {
-            "input": data,
-            "output": output_data_for_logs
-        }
-        with open('dados_completos_input_output.json', 'w', encoding='utf-8') as f:
-            json.dump(combined_data, f, ensure_ascii=False, indent=4)
-        logger.info(f"Dados completos de entrada e saída salvos em 'dados_completos_input_output.json'")
-        
-        # MANTER COMPATIBILIDADE: Retornar apenas {"forecast": [...]} como antes
         return jsonify({"forecast": forecast_results})
     
     except Exception as ex:
@@ -376,22 +240,13 @@ def predict_quarterly():
     """
     data = request.get_json(force=True) or {}
     
-    logger.info("="*80)
-    logger.info("ENDPOINT DEDICADO PARA PREVISÕES TRIMESTRAIS")
-    logger.info("="*80)
-    
-    # Forçar configurações para previsão trimestral
-    data["granularidade"] = "M"  # Sempre mensal para trimestres
+    data["granularidade"] = "M"
     data["agrupamento_trimestral"] = True
-    data["agrupamento_semestral"] = False  # Garantir que não conflite
+    data["agrupamento_semestral"] = False
     
-    # Converter 'trimestres' para 'periodos' se fornecido
     if "trimestres" in data:
         data["periodos"] = data["trimestres"]
-        logger.info(f"Convertendo 'trimestres' ({data['trimestres']}) para 'periodos'")
     
-    # Chamar o endpoint principal com as configurações forçadas
-    # O endpoint predict() já retorna no formato compatível {"forecast": [...]}
     return predict()
 
 @app.route('/predict_semiannually', methods=['POST'])
@@ -407,22 +262,13 @@ def predict_semiannually():
     """
     data = request.get_json(force=True) or {}
     
-    logger.info("="*80)
-    logger.info("ENDPOINT DEDICADO PARA PREVISÕES SEMESTRAIS")
-    logger.info("="*80)
-    
-    # Forçar configurações para previsão semestral
-    data["granularidade"] = "M"  # Sempre mensal para semestres
+    data["granularidade"] = "M"
     data["agrupamento_semestral"] = True
-    data["agrupamento_trimestral"] = False  # Garantir que não conflite
+    data["agrupamento_trimestral"] = False
     
-    # Converter 'semestres' para 'periodos' se fornecido
     if "semestres" in data:
         data["periodos"] = data["semestres"]
-        logger.info(f"Convertendo 'semestres' ({data['semestres']}) para 'periodos'")
     
-    # Chamar o endpoint principal com as configurações forçadas
-    # O endpoint predict() já retorna no formato compatível {"forecast": [...]}
     return predict()
 
 @app.route('/generate_html', methods=['POST'])
@@ -448,28 +294,14 @@ def generate_html():
     try:
         data = request.get_json(force=True) or {}
         
-        logger.info("="*60)
-        logger.info("ENDPOINT GERADOR DE HTML")
-        logger.info("="*60)
-        
-        # Verificar se cliente quer HTML direto
         wants_html_direct = (
             request.headers.get('Accept', '').startswith('text/html') or
             data.get('return_html_direct', False)
         )
         
-        logger.info(f"Modo retorno: {'HTML direto' if wants_html_direct else 'JSON'}")
-        
-        # Verificar se foi enviado html_data (modo simplificado) ou parâmetros individuais
         if 'html_data' in data:
-            # Modo simplificado: usar dados do banco
             html_data_from_db = data['html_data']
             layout = data.get('layout', 'full')
-            
-            logger.info(f"Modo simplificado: usando html_data do banco")
-            logger.info(f"Layout: {layout}")
-            
-            # Extrair dados do html_data
             item_id = html_data_from_db['item_id']
             prediction = html_data_from_db['prediction']
             explanation_data = html_data_from_db['explanation_data']
@@ -513,10 +345,8 @@ def generate_html():
                     return f"<html><body><h1>Erro: Data inválida em 'prediction.ds': {str(e)}</h1></body></html>", 400, {'Content-Type': 'text/html; charset=utf-8'}
                 return jsonify({"error": f"Data inválida em 'prediction.ds': {str(e)}"}), 400
         
-        # Validar layout
         if layout not in ['full', 'compact']:
             layout = 'full'
-            logger.warning(f"Layout inválido, usando 'full'")
         
         # Validar prediction apenas no modo completo
         if 'html_data' not in data:
@@ -527,38 +357,17 @@ def generate_html():
                         return f"<html><body><h1>Erro: Campo obrigatório 'prediction.{field}' não fornecido</h1></body></html>", 400, {'Content-Type': 'text/html; charset=utf-8'}
                     return jsonify({"error": f"Campo obrigatório 'prediction.{field}' não fornecido"}), 400
         
-        logger.info(f"Gerando HTML para item {item_id}")
-        logger.info(f"Layout: {layout}")
-        logger.info(f"Trimestral: {is_quarterly}")
-        logger.info(f"Semestral: {is_semiannual}")
-        
-        # Criar um modelo temporário apenas para acessar as funções de geração de HTML
-        # Recuperar configurações salvas no explanation_data
         seasonality_mode = explanation_data.get('seasonality_mode', 'multiplicative')
-        freq = explanation_data.get('freq', 'MS')
         month_adjustments = explanation_data.get('month_adjustments', {})
         day_of_week_adjustments = explanation_data.get('day_of_week_adjustments', {})
         growth_factor = explanation_data.get('growth_factor', 1.0)
         confidence_level = explanation_data.get('confidence_level', 0.95)
         
-        logger.info(f"Configurações recuperadas:")
-        logger.info(f"  seasonality_mode: {seasonality_mode}")
-        logger.info(f"  freq: {freq}")
-        logger.info(f"  month_adjustments: {month_adjustments}")
-        
-        # Debug: verificar seasonal_pattern
-        seasonal_pattern = explanation_data.get('seasonal_pattern', {})
-        logger.info(f"  seasonal_pattern: {seasonal_pattern}")
-        if seasonal_pattern:
-            logger.info(f"  Fator para mês {date.month}: {seasonal_pattern.get(date.month, 'NÃO ENCONTRADO')}")
-        
-        # Debug: verificar prediction
-        logger.info(f"Dados da previsão:")
-        logger.info(f"  Data: {date}")
-        logger.info(f"  Mês: {date.month}")
-        logger.info(f"  Trend: {prediction.get('trend')}")
-        logger.info(f"  Yearly: {prediction.get('yearly')}")
-        logger.info(f"  Yhat: {prediction.get('yhat')}")
+        replicate_only = False
+        if 'html_data' in data:
+            replicate_only = html_data_from_db.get('replicate_only', False)
+        else:
+            replicate_only = data.get('replicate_only', False)
         
         modelo_temp = ModeloAjustado(
             granularity='M',
@@ -570,7 +379,8 @@ def generate_html():
             month_adjustments=month_adjustments,
             day_of_week_adjustments=day_of_week_adjustments,
             growth_factor=growth_factor,
-            confidence_level=confidence_level
+            confidence_level=confidence_level,
+            replicate_only=replicate_only
         )
         
         # Criar dados completos do modelo e métricas (simulados a partir dos dados de explicação)
@@ -630,17 +440,9 @@ def generate_html():
                 item_id, prediction, date, is_quarterly, quarterly_info, is_semiannual, semiannual_info, layout
             )
         
-        logger.info(f"HTML gerado com sucesso: {len(html_content)} caracteres")
-        logger.info("="*60)
-        
-        # Retornar HTML direto ou JSON baseado na preferência do cliente
         if wants_html_direct:
-            # Retornar HTML puro para exibição direta no navegador
-            logger.info("Retornando HTML direto (text/html)")
             return html_content, 200, {'Content-Type': 'text/html; charset=utf-8'}
         else:
-            # Retornar JSON (comportamento padrão)
-            logger.info("Retornando JSON com HTML")
             return jsonify({
                 "html": html_content,
                 "info": {
@@ -697,24 +499,8 @@ def mrp_optimize():
     """
     try:
         data = request.get_json(force=True) or {}
+        logger.info("MRP Optimize chamado")
         
-        logger.info("="*80)
-        logger.info("ENDPOINT MRP OPTIMIZATION")
-        logger.info("="*80)
-        
-        # Log dos dados de entrada
-        logger.info("DADOS DE ENTRADA:")
-        logger.info(f"daily_demands: {data.get('daily_demands', 'não informado')}")
-        logger.info(f"initial_stock: {data.get('initial_stock', 'não informado')}")
-        logger.info(f"leadtime_days: {data.get('leadtime_days', 'não informado')}")
-        logger.info(f"period_start_date: {data.get('period_start_date', 'não informado')}")
-        logger.info(f"period_end_date: {data.get('period_end_date', 'não informado')}")
-        logger.info(f"start_cutoff_date: {data.get('start_cutoff_date', 'não informado')}")
-        logger.info(f"end_cutoff_date: {data.get('end_cutoff_date', 'não informado')}")
-        logger.info(f"ignore_safety_stock: {data.get('ignore_safety_stock', 'não informado')}")
-        logger.info(f"exact_quantity_match: {data.get('exact_quantity_match', 'não informado')}")
-        
-        # Validações dos parâmetros obrigatórios
         required_fields = [
             'daily_demands', 'initial_stock', 'leadtime_days',
             'period_start_date', 'period_end_date', 
@@ -750,7 +536,7 @@ def mrp_optimize():
                 pd.to_datetime(date_key + '-01')
                 # Verificar se demanda é numérica
                 float(demand_value)
-            except:
+            except (ValueError, TypeError):
                 return jsonify({"error": f"Formato inválido em daily_demands. Chave '{date_key}' deve ser YYYY-MM e valor deve ser numérico"}), 400
         
         # Validar datas
@@ -760,14 +546,23 @@ def mrp_optimize():
             start_cutoff_date = data['start_cutoff_date']
             end_cutoff_date = data['end_cutoff_date']
             
-            # Validar formato das datas
-            pd.to_datetime(period_start_date)
-            pd.to_datetime(period_end_date)
-            pd.to_datetime(start_cutoff_date)
-            pd.to_datetime(end_cutoff_date)
+            start_pd = pd.to_datetime(period_start_date)
+            end_pd = pd.to_datetime(period_end_date)
+            start_cutoff_pd = pd.to_datetime(start_cutoff_date)
+            end_cutoff_pd = pd.to_datetime(end_cutoff_date)
             
-        except:
+            if start_pd >= end_pd:
+                return jsonify({"error": "period_start_date deve ser anterior a period_end_date"}), 400
+            if start_cutoff_pd > end_cutoff_pd:
+                return jsonify({"error": "start_cutoff_date deve ser anterior ou igual a end_cutoff_date"}), 400
+            
+        except (ValueError, TypeError, KeyError):
             return jsonify({"error": "Datas devem estar no formato YYYY-MM-DD"}), 400
+        
+        # Validar demandas negativas
+        for date_key, demand_value in daily_demands.items():
+            if float(demand_value) < 0:
+                return jsonify({"error": f"Demanda em '{date_key}' não pode ser negativa"}), 400
         
         # Extrair parâmetros opcionais de otimização
         optimization_kwargs = {}
@@ -776,30 +571,17 @@ def mrp_optimize():
             'service_level', 'min_batch_size', 'max_batch_size',
             'review_period_days', 'safety_days', 'consolidation_window_days',
             'daily_production_capacity', 'enable_eoq_optimization', 'enable_consolidation',
-            'include_extended_analytics',
-            'ignore_safety_stock',  # 🎯 NOVO: Ignorar completamente estoque de segurança
-            'exact_quantity_match',  # 🎯 NOVO: Garantir que estoque total (inicial + produzido) seja exatamente igual à demanda total
-            'auto_calculate_max_batch_size',  # 🎯 NOVO: Auto-calculation do max_batch_size
-            'max_batch_multiplier',  # 🎯 NOVO: Multiplicador do EOQ para auto-calculation
-    
-            'force_excess_production'  # 🎯 NOVO: Forçar produção real mesmo com estoque suficiente
+            'include_extended_analytics', 'ignore_safety_stock', 'exact_quantity_match',
+            'auto_calculate_max_batch_size', 'max_batch_multiplier',
+            'force_excess_production', 'unit_value', 'leadtime_std'
         ]
         
         for param in optional_params:
             if param in data:
                 optimization_kwargs[param] = data[param]
         
-        # Log dos parâmetros opcionais
-        if optimization_kwargs:
-            logger.info("PARÂMETROS DE OTIMIZAÇÃO CUSTOMIZADOS:")
-            for param, value in optimization_kwargs.items():
-                logger.info(f"  {param}: {value}")
-        
-        # Criar otimizador MRP
         optimizer = MRPOptimizer()
         
-        # Executar otimização
-        logger.info("Iniciando otimização MRP...")
         result = optimizer.calculate_batches_with_start_end_cutoff(
             daily_demands=daily_demands,
             initial_stock=initial_stock,
@@ -811,46 +593,7 @@ def mrp_optimize():
             **optimization_kwargs
         )
         
-        # Log dos resultados
-        logger.info("OTIMIZAÇÃO MRP CONCLUÍDA:")
-        logger.info(f"Total de lotes planejados: {len(result['batches'])}")
-        logger.info(f"Produção total: {result['analytics']['summary']['total_produced']}")
-        logger.info(f"Taxa de cobertura: {result['analytics']['summary']['production_coverage_rate']}")
-        logger.info(f"Estoque mínimo: {result['analytics']['summary']['minimum_stock']}")
-        logger.info(f"Estoque final: {result['analytics']['summary']['final_stock']}")
-        logger.info(f"Stockout ocorreu: {result['analytics']['summary']['stockout_occurred']}")
-        
-        # Salvar resultados completos para debug
-        with open('mrp_results_completos.json', 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False, indent=4)
-        logger.info("Resultados MRP salvos em 'mrp_results_completos.json'")
-        
-        # Log detalhado dos primeiros lotes
-        if result['batches']:
-            logger.info("\nPRIMEIROS LOTES PLANEJADOS:")
-            for i, batch in enumerate(result['batches'][:5]):  # Mostrar até 5 primeiros
-                logger.info(f"  Lote {i+1}:")
-                logger.info(f"    Data pedido: {batch['order_date']}")
-                logger.info(f"    Data chegada: {batch['arrival_date']}")
-                logger.info(f"    Quantidade: {batch['quantity']}")
-                logger.info(f"    Urgência: {batch['analytics'].get('urgency_level', 'N/A')}")
-                logger.info(f"    Cobertura: {batch['analytics'].get('coverage_days', 'N/A')} dias")
-        
-        logger.info("="*80)
-        
-        # Converter tipos numpy para tipos nativos do Python para serialização JSON
-        def convert_numpy_types(obj):
-            """Converte tipos numpy para tipos nativos do Python"""
-            if isinstance(obj, dict):
-                return {key: convert_numpy_types(value) for key, value in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_numpy_types(item) for item in obj]
-            elif hasattr(obj, 'item'):  # numpy scalar
-                return obj.item()
-            elif hasattr(obj, 'tolist'):  # numpy array
-                return obj.tolist()
-            else:
-                return obj
+        logger.info(f"MRP concluído - {len(result['batches'])} lotes planejados")
         
         result_converted = convert_numpy_types(result)
         
@@ -892,22 +635,8 @@ def mrp_sporadic():
     """
     try:
         data = request.get_json(force=True) or {}
+        logger.info("MRP Sporadic chamado")
         
-        logger.info("="*80)
-        logger.info("ENDPOINT MRP SPORADIC DEMAND")
-        logger.info("="*80)
-        
-        # Log dos dados de entrada
-        logger.info("DADOS DE ENTRADA:")
-        logger.info(f"sporadic_demand: {data.get('sporadic_demand', 'não informado')}")
-        logger.info(f"initial_stock: {data.get('initial_stock', 'não informado')}")
-        logger.info(f"leadtime_days: {data.get('leadtime_days', 'não informado')}")
-        logger.info(f"period_start_date: {data.get('period_start_date', 'não informado')}")
-        logger.info(f"period_end_date: {data.get('period_end_date', 'não informado')}")
-        logger.info(f"start_cutoff_date: {data.get('start_cutoff_date', 'não informado')}")
-        logger.info(f"end_cutoff_date: {data.get('end_cutoff_date', 'não informado')}")
-        
-        # Validações dos parâmetros obrigatórios
         required_fields = [
             'sporadic_demand', 'initial_stock', 'leadtime_days',
             'period_start_date', 'period_end_date', 
@@ -945,7 +674,7 @@ def mrp_sporadic():
                 demand_val = float(demand_value)
                 if demand_val < 0:
                     return jsonify({"error": f"Demanda em '{date_key}' não pode ser negativa"}), 400
-            except:
+            except (ValueError, TypeError):
                 return jsonify({"error": f"Formato inválido em sporadic_demand. Chave '{date_key}' deve ser YYYY-MM-DD e valor deve ser numérico positivo"}), 400
         
         # Validar datas
@@ -955,22 +684,19 @@ def mrp_sporadic():
             start_cutoff_date = data['start_cutoff_date']
             end_cutoff_date = data['end_cutoff_date']
             
-            # Validar formato das datas
             start_pd = pd.to_datetime(period_start_date)
             end_pd = pd.to_datetime(period_end_date)
             start_cutoff_pd = pd.to_datetime(start_cutoff_date)
             end_cutoff_pd = pd.to_datetime(end_cutoff_date)
             
-            # Validar lógica das datas
             if start_pd >= end_pd:
                 return jsonify({"error": "period_start_date deve ser anterior a period_end_date"}), 400
             if start_cutoff_pd > end_cutoff_pd:
                 return jsonify({"error": "start_cutoff_date deve ser anterior ou igual a end_cutoff_date"}), 400
             
-        except:
+        except (ValueError, TypeError, KeyError):
             return jsonify({"error": "Datas devem estar no formato YYYY-MM-DD"}), 400
         
-        # Extrair parâmetros específicos de demanda esporádica
         safety_margin_percent = float(data.get('safety_margin_percent', 8.0))
         safety_days = int(data.get('safety_days', 2))
         minimum_stock_percent = float(data.get('minimum_stock_percent', 0.0))
@@ -993,49 +719,14 @@ def mrp_sporadic():
             'service_level', 'min_batch_size', 'max_batch_size',
             'review_period_days', 'consolidation_window_days',
             'daily_production_capacity', 'enable_eoq_optimization', 'enable_consolidation',
-            'auto_calculate_max_batch_size',  # 🎯 NOVO: Auto-calculation do max_batch_size
-            'max_batch_multiplier'  # 🎯 NOVO: Multiplicador do EOQ para auto-calculation
+            'auto_calculate_max_batch_size', 'max_batch_multiplier'
         ]
         
         for param in optional_params:
             if param in data:
                 optimization_kwargs[param] = data[param]
         
-        # Log dos parâmetros específicos
-        logger.info("PARÂMETROS ESPECÍFICOS DE DEMANDA ESPORÁDICA:")
-        logger.info(f"  safety_margin_percent: {safety_margin_percent}%")
-        logger.info(f"  🎯 safety_days: {safety_days} (deve antecipar demandas em X dias)")
-        logger.info(f"  minimum_stock_percent: {minimum_stock_percent}%")
-        logger.info(f"  max_gap_days: {max_gap_days}")
-        
-        # Log dos parâmetros de otimização (se fornecidos)
-        if optimization_kwargs:
-            logger.info("PARÂMETROS DE OTIMIZAÇÃO AVANÇADOS:")
-            for param, value in optimization_kwargs.items():
-                logger.info(f"  {param}: {value}")
-        
-        # Análise prévia das demandas
-        demand_dates = list(sporadic_demand.keys())
-        demand_values = list(sporadic_demand.values())
-        total_demand = sum(demand_values)
-        max_demand = max(demand_values)
-        min_demand = min(demand_values)
-        avg_demand = total_demand / len(demand_values)
-        
-        logger.info("ANÁLISE PRÉVIA DAS DEMANDAS ESPORÁDICAS:")
-        logger.info(f"  Total de eventos: {len(sporadic_demand)}")
-        logger.info(f"  Período das demandas: {min(demand_dates)} a {max(demand_dates)}")
-        logger.info(f"  Demanda total: {total_demand}")
-        logger.info(f"  Demanda média por evento: {avg_demand:.2f}")
-        logger.info(f"  Demanda mínima: {min_demand}")
-        logger.info(f"  Demanda máxima: {max_demand}")
-        logger.info(f"  Variação: {((max_demand - min_demand) / avg_demand * 100):.1f}%")
-        
-        # Criar otimizador MRP
         optimizer = MRPOptimizer()
-        
-        # Executar planejamento de demanda esporádica
-        logger.info("Iniciando planejamento de lotes para demanda esporádica...")
         result = optimizer.calculate_batches_for_sporadic_demand(
             sporadic_demand=sporadic_demand,
             initial_stock=initial_stock,
@@ -1051,72 +742,7 @@ def mrp_sporadic():
             **optimization_kwargs
         )
         
-        # Log dos resultados
-        analytics = result['analytics']
-        summary = analytics['summary']
-        sporadic_metrics = analytics['sporadic_demand_metrics']
-        
-        logger.info("PLANEJAMENTO ESPORÁDICO CONCLUÍDO:")
-        logger.info(f"Total de lotes planejados: {len(result['batches'])}")
-        logger.info(f"Produção total: {summary['total_produced']}")
-        logger.info(f"Taxa de cobertura: {summary['production_coverage_rate']}")
-        logger.info(f"Taxa de atendimento: {summary['demand_fulfillment_rate']}%")
-        logger.info(f"Demandas atendidas: {summary['demands_met_count']}/{summary['demands_met_count'] + summary['demands_unmet_count']}")
-        logger.info(f"Estoque mínimo: {summary['minimum_stock']}")
-        logger.info(f"Estoque final: {summary['final_stock']}")
-        logger.info(f"Stockout ocorreu: {summary['stockout_occurred']}")
-        
-        logger.info("MÉTRICAS ESPECÍFICAS DE DEMANDA ESPORÁDICA:")
-        logger.info(f"Concentração de demanda: {sporadic_metrics['demand_concentration']['concentration_level']}")
-        logger.info(f"Previsibilidade: {sporadic_metrics['demand_predictability']}")
-        logger.info(f"Intervalo médio entre demandas: {sporadic_metrics['interval_statistics']['average_interval_days']} dias")
-        logger.info(f"Picos de demanda detectados: {sporadic_metrics['peak_demand_analysis']['peak_count']}")
-        
-        # Salvar resultados completos para debug
-        with open('mrp_sporadic_results.json', 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False, indent=4)
-        logger.info("Resultados salvos em 'mrp_sporadic_results.json'")
-        
-        # Log detalhado dos lotes com informações específicas
-        if result['batches']:
-            logger.info(f"\nLOTES PLANEJADOS PARA DEMANDAS ESPORÁDICAS:")
-            for i, batch in enumerate(result['batches'], 1):
-                analytics_batch = batch['analytics']
-                logger.info(f"  Lote {i}:")
-                logger.info(f"    Data pedido: {batch['order_date']}")
-                logger.info(f"    Data chegada: {batch['arrival_date']}")
-                logger.info(f"    Quantidade: {batch['quantity']}")
-                logger.info(f"    Demanda alvo: {analytics_batch.get('target_demand_date', 'N/A')} ({analytics_batch.get('target_demand_quantity', 'N/A')})")
-                logger.info(f"    Déficit coberto: {analytics_batch.get('shortfall_covered', 'N/A')}")
-                logger.info(f"    Crítico: {'Sim' if analytics_batch.get('is_critical', False) else 'Não'}")
-                logger.info(f"    Urgência: {analytics_batch.get('urgency_level', 'N/A')}")
-                logger.info(f"    Margem segurança: {analytics_batch.get('safety_margin_days', 'N/A')} dias")
-                logger.info(f"    Eficiência: {analytics_batch.get('efficiency_ratio', 'N/A')}")
-        
-        # Log de demandas não atendidas (se houver)
-        if summary['unmet_demand_details']:
-            logger.info(f"\nDEMANDAS NÃO ATENDIDAS ({len(summary['unmet_demand_details'])}):")
-            for unmet in summary['unmet_demand_details']:
-                logger.info(f"  Data: {unmet['date']}")
-                logger.info(f"    Demanda: {unmet['demand']}")
-                logger.info(f"    Estoque disponível: {unmet['available_stock']}")
-                logger.info(f"    Déficit: {unmet['shortage']}")
-        
-        logger.info("="*80)
-        
-        # Converter tipos numpy para tipos nativos do Python
-        def convert_numpy_types(obj):
-            """Converte tipos numpy para tipos nativos do Python"""
-            if isinstance(obj, dict):
-                return {key: convert_numpy_types(value) for key, value in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_numpy_types(item) for item in obj]
-            elif hasattr(obj, 'item'):  # numpy scalar
-                return obj.item()
-            elif hasattr(obj, 'tolist'):  # numpy array
-                return obj.tolist()
-            else:
-                return obj
+        logger.info(f"MRP Sporadic concluído - {len(result['batches'])} lotes planejados")
         
         result_converted = convert_numpy_types(result)
         
@@ -1146,16 +772,8 @@ def mrp_advanced():
     """
     try:
         data = request.get_json(force=True) or {}
+        logger.info("MRP Advanced chamado")
         
-        # Log completo dos dados de entrada
-        logger.info("="*80)
-        logger.info("MRP AVANÇADO - DADOS DE ENTRADA:")
-        logger.info("-"*80)
-        logger.info(f"Endpoint: /mrp_advanced")
-        logger.info(f"Method: POST")
-        logger.info(f"Data keys: {list(data.keys())}")
-        
-        # Validações obrigatórias
         required_fields = ['sporadic_demand', 'initial_stock', 'leadtime_days', 
                           'period_start_date', 'period_end_date', 
                           'start_cutoff_date', 'end_cutoff_date']
@@ -1186,7 +804,7 @@ def mrp_advanced():
                 demand_val = float(demand_value)
                 if demand_val < 0:
                     return jsonify({"error": f"Demanda em '{date_key}' não pode ser negativa"}), 400
-            except:
+            except (ValueError, TypeError):
                 return jsonify({"error": f"Formato inválido em sporadic_demand. Chave '{date_key}' deve ser YYYY-MM-DD e valor deve ser numérico positivo"}), 400
         
         # Validar datas
@@ -1196,22 +814,19 @@ def mrp_advanced():
             start_cutoff_date = data['start_cutoff_date']
             end_cutoff_date = data['end_cutoff_date']
             
-            # Validar formato das datas
             start_pd = pd.to_datetime(period_start_date)
             end_pd = pd.to_datetime(period_end_date)
             start_cutoff_pd = pd.to_datetime(start_cutoff_date)
             end_cutoff_pd = pd.to_datetime(end_cutoff_date)
             
-            # Validar lógica das datas
             if start_pd >= end_pd:
                 return jsonify({"error": "period_start_date deve ser anterior a period_end_date"}), 400
             if start_cutoff_pd > end_cutoff_pd:
                 return jsonify({"error": "start_cutoff_date deve ser anterior ou igual a end_cutoff_date"}), 400
             
-        except:
+        except (ValueError, TypeError, KeyError):
             return jsonify({"error": "Datas devem estar no formato YYYY-MM-DD"}), 400
         
-        # Parâmetros específicos de demanda esporádica
         safety_margin_percent = float(data.get('safety_margin_percent', 8.0))
         safety_days = int(data.get('safety_days', 2))
         minimum_stock_percent = float(data.get('minimum_stock_percent', 0.0))
@@ -1282,61 +897,12 @@ def mrp_advanced():
             if optimization_params.max_batch_multiplier < 1.0 or optimization_params.max_batch_multiplier > 10.0:
                 return jsonify({"error": "max_batch_multiplier deve estar entre 1.0 e 10.0"}), 400
         
-        # 🎯 NOVO: Parâmetro para ignorar completamente estoque de segurança
         ignore_safety_stock = data.get('ignore_safety_stock', False)
-        
-        # Parâmetro para habilitar analytics estendidos (padrão: True para endpoint avançado)
         include_extended_analytics = data.get('include_extended_analytics', True)
-        
-        # Log dos parâmetros
-        logger.info("PARÂMETROS AVANÇADOS DE OTIMIZAÇÃO:")
-        logger.info(f"  setup_cost: {optimization_params.setup_cost}")
-        logger.info(f"  holding_cost_rate: {optimization_params.holding_cost_rate}")
-        logger.info(f"  service_level: {optimization_params.service_level}")
-        logger.info(f"  enable_eoq_optimization: {optimization_params.enable_eoq_optimization}")
-        logger.info(f"  enable_consolidation: {optimization_params.enable_consolidation}")
-        logger.info(f"  force_consolidation_within_leadtime: {optimization_params.force_consolidation_within_leadtime}")
-        logger.info(f"  min_consolidation_benefit: {optimization_params.min_consolidation_benefit}")
-        logger.info(f"  🎯 auto_calculate_max_batch_size: {optimization_params.auto_calculate_max_batch_size}")
-        logger.info(f"  🎯 max_batch_multiplier: {optimization_params.max_batch_multiplier}")
-        logger.info(f"  🎯 ignore_safety_stock: {ignore_safety_stock}")
-        logger.info(f"  include_extended_analytics: {include_extended_analytics}")
-        
-        # Análise prévia das demandas
-        demand_dates = list(sporadic_demand.keys())
-        demand_values = list(sporadic_demand.values())
-        total_demand = sum(demand_values)
-        max_demand = max(demand_values)
-        min_demand = min(demand_values)
-        avg_demand = total_demand / len(demand_values)
-        
-        logger.info("ANÁLISE PRÉVIA DAS DEMANDAS ESPORÁDICAS:")
-        logger.info(f"  Total de eventos: {len(sporadic_demand)}")
-        logger.info(f"  Período das demandas: {min(demand_dates)} a {max(demand_dates)}")
-        logger.info(f"  Demanda total: {total_demand}")
-        logger.info(f"  Demanda média por evento: {avg_demand:.2f}")
-        logger.info(f"  Demanda mínima: {min_demand}")
-        logger.info(f"  Demanda máxima: {max_demand}")
-        logger.info(f"  Coeficiente de variação: {((max_demand - min_demand) / avg_demand):.2f}")
-        
-        # Detectar estratégia que será utilizada
-        cv = (max_demand - min_demand) / avg_demand if avg_demand > 0 else 0
-        if leadtime_days > 45:
-            strategy_expected = "Long Lead Time Forecasting"
-        elif cv > 0.5:
-            strategy_expected = "Dynamic Buffer Strategy"
-        elif optimization_params.enable_eoq_optimization and total_demand > optimization_params.min_batch_size * 2:
-            strategy_expected = "EOQ-Based Strategy"
-        else:
-            strategy_expected = "Hybrid Consolidation Strategy"
-        
-        logger.info(f"  Estratégia esperada: {strategy_expected}")
         
         # Criar otimizador MRP avançado
         optimizer = MRPOptimizer(optimization_params)
         
-        # Executar planejamento avançado
-        logger.info("Iniciando planejamento MRP AVANÇADO...")
         result = optimizer.calculate_batches_for_sporadic_demand(
             sporadic_demand=sporadic_demand,
             initial_stock=initial_stock,
@@ -1353,131 +919,9 @@ def mrp_advanced():
             include_extended_analytics=include_extended_analytics
         )
         
-        # Log dos resultados básicos
-        analytics = result['analytics']
-        summary = analytics['summary']
-        
-        logger.info("PLANEJAMENTO MRP AVANÇADO CONCLUÍDO:")
-        logger.info(f"Total de lotes planejados: {len(result['batches'])}")
-        logger.info(f"Produção total: {summary['total_produced']}")
-        logger.info(f"Taxa de cobertura: {summary['production_coverage_rate']}")
-        logger.info(f"Taxa de atendimento: {summary['demand_fulfillment_rate']}%")
-        logger.info(f"Estoque mínimo: {summary['minimum_stock']}")
-        logger.info(f"Estoque final: {summary['final_stock']}")
-        logger.info(f"Stockout ocorreu: {summary['stockout_occurred']}")
-        
-        # Log de analytics estendidos (se disponíveis)
-        if include_extended_analytics and 'extended_analytics' in analytics:
-            extended = analytics['extended_analytics']
-            
-            logger.info("ANALYTICS ESTENDIDOS:")
-            
-            # Métricas de performance
-            if 'performance_metrics' in extended:
-                perf = extended['performance_metrics']
-                logger.info(f"  Nível de serviço realizado: {perf.get('realized_service_level', 'N/A')}%")
-                logger.info(f"  Giro de estoque: {perf.get('inventory_turnover', 'N/A')}")
-                logger.info(f"  Dias médios de estoque: {perf.get('average_days_of_inventory', 'N/A')}")
-                logger.info(f"  Frequência de setup: {perf.get('setup_frequency', 'N/A')}")
-                logger.info(f"  Tamanho médio de lote: {perf.get('average_batch_size', 'N/A')}")
-            
-            # Análise de custos
-            if 'cost_analysis' in extended:
-                cost = extended['cost_analysis']
-                logger.info(f"  Custo total estimado: R$ {cost.get('total_cost', 'N/A')}")
-                logger.info(f"  Custo de setup: R$ {cost.get('setup_cost', 'N/A')}")
-                logger.info(f"  Custo de manutenção: R$ {cost.get('holding_cost', 'N/A')}")
-                logger.info(f"  Custo de falta: R$ {cost.get('stockout_cost', 'N/A')}")
-            
-            # Métricas de otimização
-            if 'optimization_metrics' in extended:
-                opt = extended['optimization_metrics']
-                logger.info(f"  EOQ teórico: {opt.get('theoretical_eoq', 'N/A')}")
-                logger.info(f"  Lote médio real: {opt.get('actual_average_batch', 'N/A')}")
-                logger.info(f"  Aderência ao EOQ: {opt.get('eoq_adherence_rate', 'N/A')}%")
-                logger.info(f"  Economia de consolidação: R$ {opt.get('consolidation_savings', 'N/A')}")
-            
-            # Análise de sazonalidade
-            if 'seasonality_analysis' in extended:
-                season = extended['seasonality_analysis']
-                logger.info(f"  Sazonalidade detectada: {season.get('seasonality_detected', 'N/A')}")
-                if season.get('trend', {}).get('direction'):
-                    trend = season['trend']
-                    logger.info(f"  Tendência: {trend.get('direction', 'N/A')} ({trend.get('strength', 'N/A')})")
-            
-            # Recomendações
-            if 'recommendations' in extended:
-                recommendations = extended['recommendations']
-                logger.info(f"  Recomendações geradas: {len(recommendations)}")
-                for i, rec in enumerate(recommendations[:3], 1):  # Mostrar apenas as 3 primeiras
-                    logger.info(f"    {i}. {rec.get('type', 'N/A')}: {rec.get('message', 'N/A')}")
-        
-        # Log detalhado dos lotes
-        if result['batches']:
-            logger.info(f"\nLOTES PLANEJADOS COM ALGORITMOS AVANÇADOS:")
-            for i, batch in enumerate(result['batches'], 1):
-                analytics_batch = batch['analytics']
-                logger.info(f"  Lote {i}:")
-                logger.info(f"    Data pedido: {batch['order_date']}")
-                logger.info(f"    Data chegada: {batch['arrival_date']}")
-                logger.info(f"    Quantidade: {batch['quantity']}")
-                logger.info(f"    Estoque antes: {analytics_batch.get('stock_before_arrival', 'N/A')}")
-                logger.info(f"    Estoque depois: {analytics_batch.get('stock_after_arrival', 'N/A')}")
-                logger.info(f"    Cobertura: {analytics_batch.get('coverage_days', 'N/A')} dias")
-                logger.info(f"    Urgência: {analytics_batch.get('urgency_level', 'N/A')}")
-                
-                # Informações específicas se consolidado
-                if analytics_batch.get('consolidated_group', False):
-                    logger.info(f"    ✓ CONSOLIDADO: {analytics_batch.get('group_size', 'N/A')} demandas")
-                    logger.info(f"    ✓ Economia: R$ {analytics_batch.get('consolidation_savings', 'N/A')}")
-                    logger.info(f"    ✓ Qualidade: {analytics_batch.get('consolidation_quality', 'N/A')}")
-                
-                # Informações específicas de EOQ
-                if analytics_batch.get('eoq_used'):
-                    logger.info(f"    ✓ EOQ: {analytics_batch.get('eoq_used', 'N/A')}")
-                
-                # Informações específicas de classificação ABC/XYZ
-                if analytics_batch.get('abc_classification'):
-                    logger.info(f"    ✓ Classificação: {analytics_batch.get('abc_classification', 'N/A')}{analytics_batch.get('xyz_classification', '')}")
-        
-        # Salvar resultados completos
-        with open('mrp_advanced_results.json', 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False, indent=4)
-        logger.info("Resultados avançados salvos em 'mrp_advanced_results.json'")
-        
-        logger.info("="*80)
-        
-        # Converter tipos numpy para tipos nativos do Python
-        def convert_numpy_types(obj):
-            if isinstance(obj, dict):
-                return {key: convert_numpy_types(value) for key, value in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_numpy_types(item) for item in obj]
-            elif hasattr(obj, 'item'):  # numpy scalar
-                return obj.item()
-            elif hasattr(obj, 'tolist'):  # numpy array
-                return obj.tolist()
-            else:
-                return obj
+        logger.info(f"MRP Advanced concluído - {len(result['batches'])} lotes planejados")
         
         result_converted = convert_numpy_types(result)
-        
-        # Adicionar informações sobre o endpoint usado
-        result_converted['_endpoint_info'] = {
-            'endpoint': '/mrp_advanced',
-            'version': '1.0',
-            'features': [
-                'Advanced MRP algorithms',
-                'EOQ calculations',
-                'ABC/XYZ classification',
-                'Seasonality analysis',
-                'Extended analytics',
-                'Multiple planning strategies',
-                'Intelligent consolidation',
-                'Supply chain optimization'
-            ],
-            'timestamp': pd.Timestamp.now().isoformat()
-        }
         
         return jsonify(result_converted)
         
@@ -1487,6 +931,5 @@ def mrp_advanced():
         return jsonify({"error": f"Falha no planejamento MRP avançado: {str(ex)}"}), 500
 
 if __name__ == "__main__":
-    #logger.info("🌐 CORS configurado para permitir requests de qualquer URL")
-    logger.info("📡 Servidor iniciando na porta 5000...")
+    logger.info("Servidor iniciando na porta 5000...")
     app.run(debug=True, port=5000, host='127.0.0.1')

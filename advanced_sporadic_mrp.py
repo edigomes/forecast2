@@ -226,7 +226,7 @@ class AdvancedSporadicMRPPlanner:
             analytics=analytics
         )
         
-        print(f"🎯 EXACT QUANTITY BATCH: deficit={deficit}, order_date={order_date.strftime('%Y-%m-%d')}, arrival_date={actual_arrival_date.strftime('%Y-%m-%d')}")
+        logger.debug(f"EXACT QUANTITY BATCH: deficit={deficit}, order_date={order_date.strftime('%Y-%m-%d')}, arrival_date={actual_arrival_date.strftime('%Y-%m-%d')}")
         
         return [batch]
     
@@ -292,7 +292,7 @@ class AdvancedSporadicMRPPlanner:
             analytics=analytics
         )
         
-        print(f"🎯 SAFETY MARGIN BATCH: margin={safety_margin:.2f} ({safety_margin_percent}%), order_date={order_date.strftime('%Y-%m-%d')}, arrival_date={actual_arrival_date.strftime('%Y-%m-%d')}")
+        logger.debug(f"SAFETY MARGIN BATCH: margin={safety_margin:.2f} ({safety_margin_percent}%), order_date={order_date.strftime('%Y-%m-%d')}, arrival_date={actual_arrival_date.strftime('%Y-%m-%d')}")
         
         return [batch]
     
@@ -371,7 +371,7 @@ class AdvancedSporadicMRPPlanner:
                 eoq_classic = self._calculate_eoq_supplychainpy(
                     annual_demand, self.params.setup_cost, unit_cost * self.params.holding_cost_rate
                 )
-            except:
+            except Exception:
                 eoq_classic = self._calculate_eoq_manual(
                     annual_demand, self.params.setup_cost, unit_cost * self.params.holding_cost_rate
                 )
@@ -383,11 +383,12 @@ class AdvancedSporadicMRPPlanner:
         # Ajustar EOQ baseado no padrão de demanda
         eoq_adjusted = self._adjust_eoq_for_sporadic_demand(eoq_classic, demand_analysis, leadtime_days)
         
-        # Safety Stock usando múltiplos métodos
+        clamped_service_level = max(0.5, min(0.99, self.params.service_level))
+        
         safety_stock = self._calculate_safety_stock_advanced(
             demand_analysis['std_demand'], 
             leadtime_days, 
-            self.params.service_level,
+            clamped_service_level,
             demand_analysis
         )
         
@@ -399,7 +400,7 @@ class AdvancedSporadicMRPPlanner:
         reorder_point = lead_time_demand + safety_stock
         
         # Service level Z-score
-        service_level_z_score = stats.norm.ppf(self.params.service_level)
+        service_level_z_score = stats.norm.ppf(clamped_service_level)
         
         return AdvancedMRPCalculations(
             eoq=eoq_adjusted,
@@ -432,7 +433,7 @@ class AdvancedSporadicMRPPlanner:
                 holding_cost=holding_cost
             )
             return max(self.params.min_batch_size, min(self.params.max_batch_size, result))
-        except:
+        except Exception:
             return self._calculate_eoq_manual(annual_demand, setup_cost, holding_cost)
     
     def _adjust_eoq_for_sporadic_demand(
@@ -1077,10 +1078,7 @@ class AdvancedSporadicMRPPlanner:
                         demand_analysis=demand_analysis,
                         strategy="medium_leadtime_sporadic",
                         extra_data={
-                            'shortage_covered': shortage,
-                            'future_demand_considered': future_demand,
-                            'consolidation_factor': consolidation_factor,
-                            'lookahead_days': lookahead_days
+                            'shortage_covered': shortage
                         }
                     )
                 )
@@ -1320,7 +1318,7 @@ class AdvancedSporadicMRPPlanner:
                 if actual_arrival >= first_demand_date:
                     # Lead time MUITO crítico - chegada vai ser depois da demanda
                     # Precisamos de estratégia de emergência: lote MAIOR para compensar atraso
-                    print(f"⚠️  CRITICAL LEAD TIME: Batch will arrive {(actual_arrival - first_demand_date).days} days after first demand")
+                    logger.debug(f"CRITICAL LEAD TIME: Batch will arrive {(actual_arrival - first_demand_date).days} days after first demand")
                     first_batch_arrival = actual_arrival
                 else:
                     first_batch_arrival = actual_arrival
@@ -1352,7 +1350,7 @@ class AdvancedSporadicMRPPlanner:
             days_late = (first_batch_arrival - first_demand_date).days
             # Compensação por atraso: aumentar a quantidade do primeiro lote
             late_arrival_compensation = valid_demands[demand_dates[0]] * (1 + days_late * 0.1)  # 10% extra por dia de atraso
-            print(f"🚨 LATE ARRIVAL COMPENSATION: Adding {late_arrival_compensation:.0f} units for {days_late} days delay")
+            logger.debug(f"LATE ARRIVAL COMPENSATION: Adding {late_arrival_compensation:.0f} units for {days_late} days delay")
         
         batch_size_with_buffer = (batch_size + safety_buffer / num_batches + late_arrival_compensation / num_batches)
         
@@ -1400,7 +1398,7 @@ class AdvancedSporadicMRPPlanner:
                 
                 # Se o lote chega depois da primeira demanda, há risco
                 if current_arrival_date > first_demand_date_obj:
-                    print(f"⚠️  TIMING RISK: First batch arrives {(current_arrival_date - first_demand_date_obj).days} days AFTER first demand")
+                    logger.debug(f"TIMING RISK: First batch arrives {(current_arrival_date - first_demand_date_obj).days} days AFTER first demand")
                     first_demand_risk = True
                     # Ajustar a quantidade para incluir estoque de emergência
                     shortage = max(shortage, first_demand_qty * 1.5)  # 150% da primeira demanda como emergência

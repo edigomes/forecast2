@@ -5,6 +5,7 @@ from typing import Dict, List, Tuple, Optional
 from scipy import stats
 from dataclasses import dataclass
 import json
+from monte_carlo import run_monte_carlo_simulation
 
 # Tentar importar supplychainpy, mas não falhar se não estiver disponível
 try:
@@ -59,7 +60,7 @@ def clean_for_json(obj):
         # Para outros tipos, tentar converter para string
         try:
             return str(obj)
-        except:
+        except Exception:
             return None
 
 
@@ -75,28 +76,27 @@ class BatchResult:
 @dataclass
 class OptimizationParams:
     """Parâmetros de otimização com valores padrão sensatos"""
-    setup_cost: float = 250.0  # Custo fixo por pedido
-    holding_cost_rate: float = 0.20  # 20% ao ano do valor do produto
-    stockout_cost_multiplier: float = 15  # 2.5x o valor do produto
-    service_level: float = 0.98  # 95% de nível de serviço
-    min_batch_size: float = 200.0  # Tamanho mínimo do lote
-    max_batch_size: float = 10000.0  # Tamanho máximo do lote
-    review_period_days: int = 7  # Período de revisão padrão
-    safety_days: int = 15  # Dias de segurança adicional
-    consolidation_window_days: int = 5  # Janela para consolidar pedidos
-    daily_production_capacity: float = float('inf')  # Capacidade diária de produção
-    enable_eoq_optimization: bool = True  # Habilitar otimização EOQ
-    enable_consolidation: bool = True  # Habilitar consolidação de pedidos
-    # NOVOS PARÂMETROS para melhor controle de consolidação
-    force_consolidation_within_leadtime: bool = True  # Força consolidação dentro do lead time
-    min_consolidation_benefit: float = 50.0  # Benefício mínimo para consolidar (independente de setup_cost)
-    operational_efficiency_weight: float = 1.0  # Peso dos benefícios operacionais (0.5-2.0)
-    overlap_prevention_priority: bool = True  # Priorizar prevenção de overlap de lead time
-    # NOVO PARÂMETRO para controlar lead times longos
-    max_batches_long_leadtime: int = 3  # Máximo de lotes para lead times longos (>14 dias)
-    # 🎯 NOVO: Auto-calculation do max_batch_size
-    auto_calculate_max_batch_size: bool = False  # Se True, calcula automaticamente baseado na demanda
-    max_batch_multiplier: float = 4.0  # Multiplicador do EOQ para auto-calculation (2.0-6.0)
+    setup_cost: float = 250.0
+    holding_cost_rate: float = 0.20
+    stockout_cost_multiplier: float = 15
+    service_level: float = 0.98
+    min_batch_size: float = 200.0
+    max_batch_size: float = 10000.0
+    review_period_days: int = 7
+    safety_days: int = 15
+    consolidation_window_days: int = 5
+    daily_production_capacity: float = float('inf')
+    enable_eoq_optimization: bool = True
+    enable_consolidation: bool = True
+    force_consolidation_within_leadtime: bool = True
+    min_consolidation_benefit: float = 50.0
+    operational_efficiency_weight: float = 1.0
+    overlap_prevention_priority: bool = True
+    max_batches_long_leadtime: int = 3
+    auto_calculate_max_batch_size: bool = False
+    max_batch_multiplier: float = 4.0
+    unit_value: float = 100.0
+    leadtime_std: float = 0.0
 
 
 class MRPOptimizer:
@@ -275,6 +275,19 @@ class MRPOptimizer:
             stock_evolution_list, demand_stats, stockouts
         )
         
+        batch_dicts = [{'arrival_date': b.arrival_date, 'order_date': b.order_date, 'quantity': b.quantity} for b in batches]
+        monte_carlo_results = run_monte_carlo_simulation(
+            avg_demand=demand_stats['mean'],
+            demand_std=demand_stats['std'],
+            leadtime_days=leadtime_days,
+            leadtime_std=self.params.leadtime_std,
+            initial_stock=initial_stock,
+            batches=batch_dicts,
+            simulation_days=max(len(stock_evolution_list), 90),
+            n_simulations=1000
+        )
+        risk_analysis['monte_carlo'] = monte_carlo_results
+        
         # Recomendações baseadas em IA (limitadas para casos simples)
         if len(batches) <= 50:  # Limite de processamento
             recommendations = self._generate_recommendations(
@@ -322,6 +335,28 @@ class MRPOptimizer:
             }
         }
     
+    def _get_empty_analytics(self, initial_stock: float, demand_df: pd.DataFrame) -> Dict:
+        """Retorna analytics vazios quando stock_evolution está vazio"""
+        return {
+            'summary': {
+                'initial_stock': round(initial_stock, 2),
+                'final_stock': round(initial_stock, 2),
+                'minimum_stock': round(initial_stock, 2),
+                'minimum_stock_date': demand_df.index[0].strftime('%Y-%m-%d') if len(demand_df) > 0 else '',
+                'stockout_occurred': False,
+                'total_batches': 0,
+                'total_produced': 0,
+                'production_coverage_rate': "0%",
+                'stock_consumed': 0
+            },
+            'stock_evolution': {},
+            'critical_points': [],
+            'production_efficiency': {},
+            'demand_analysis': {'total_demand': 0, 'average_daily_demand': 0, 'demand_by_month': {}, 'period_days': 0},
+            'stock_end_of_period': {'monthly': [], 'before_batch_arrival': [], 'after_batch_arrival': []},
+            'order_dates': []
+        }
+
     def _get_empty_extended_analytics(self) -> Dict:
         """Retorna analytics estendidos vazios para casos extremos"""
         return {
@@ -411,11 +446,10 @@ class MRPOptimizer:
         
         total_quantity = sum(b.quantity for b in batches)
         
-        # Calcular EOQ teórico
         annual_demand = demand_stats['mean'] * 365
-        if annual_demand > 0 and self.params.setup_cost > 0 and self.params.holding_cost_rate > 0:
-            theoretical_eoq = np.sqrt(2 * annual_demand * self.params.setup_cost / 
-                                    (self.params.holding_cost_rate * 100))  # assumindo valor unitário 100
+        holding_cost_per_unit = self.params.unit_value * self.params.holding_cost_rate
+        if annual_demand > 0 and self.params.setup_cost > 0 and holding_cost_per_unit > 0:
+            theoretical_eoq = np.sqrt(2 * annual_demand * self.params.setup_cost / holding_cost_per_unit)
         else:
             theoretical_eoq = 0
         
@@ -510,7 +544,7 @@ class MRPOptimizer:
             })
         
         # Recomendação sobre tamanho de lote
-        if len(batches) > demand_stats['total'] / (demand_stats['mean'] * 7):  # Mais de 1 pedido por semana
+        if demand_stats['mean'] > 0 and len(batches) > demand_stats['total'] / (demand_stats['mean'] * 7):
             recommendations.append({
                 'type': 'batch_size',
                 'priority': 'medium',
@@ -629,8 +663,8 @@ class MRPOptimizer:
             return 7
             
         # Considerar variabilidade e lead time
-        base_period = np.sqrt(2 * self.params.setup_cost / 
-                            (self.params.holding_cost_rate * demand_stats['mean'] * 100 / 365))
+        holding_cost_daily = self.params.unit_value * self.params.holding_cost_rate * demand_stats['mean'] / 365
+        base_period = np.sqrt(2 * self.params.setup_cost / holding_cost_daily) if holding_cost_daily > 0 else 7
         
         # Ajustar por lead time
         adjusted_period = max(leadtime_days / 2, min(base_period, leadtime_days * 2))
@@ -759,9 +793,7 @@ class MRPOptimizer:
             return self.params.max_batch_size
         
         if annual_demand and annual_demand > 0:
-            # Calcular EOQ teórico para auto-calculation
-            unit_value = 100  # Valor unitário estimado
-            holding_cost_per_unit = unit_value * self.params.holding_cost_rate
+            holding_cost_per_unit = self.params.unit_value * self.params.holding_cost_rate
             theoretical_eoq = np.sqrt(2 * annual_demand * self.params.setup_cost / holding_cost_per_unit)
             
             # Auto-calculation baseado no EOQ teórico
@@ -778,10 +810,12 @@ class MRPOptimizer:
         self, 
         demand_std: float,
         leadtime_days: int,
-        service_level: float = None
+        service_level: float = None,
+        avg_demand: float = 0.0
     ) -> float:
-        """Calcula estoque de segurança baseado no nível de serviço"""
-        # 🎯 NOVO: Se flag ignore_safety_stock estiver ativa, retornar zero
+        """Calcula estoque de segurança com fórmula completa incluindo variabilidade do lead time.
+        SS = Z * sqrt(LT * σ_d² + d_avg² * σ_LT²)
+        """
         if getattr(self, '_ignore_safety_stock', False):
             return 0.0
             
@@ -791,11 +825,14 @@ class MRPOptimizer:
         if demand_std <= 0 or leadtime_days <= 0:
             return 0
             
-        # Z-score para o nível de serviço
         z_score = stats.norm.ppf(service_level)
         
-        # Estoque de segurança = Z * σ * √LT
-        safety_stock = z_score * demand_std * np.sqrt(leadtime_days)
+        leadtime_std = self.params.leadtime_std
+        if leadtime_std > 0 and avg_demand > 0:
+            variance = (leadtime_days * demand_std**2) + (avg_demand**2 * leadtime_std**2)
+            safety_stock = z_score * np.sqrt(variance)
+        else:
+            safety_stock = z_score * demand_std * np.sqrt(leadtime_days)
         
         return safety_stock
     
@@ -890,13 +927,12 @@ class MRPOptimizer:
         batches = []
         current_stock = initial_stock
         
-        # Calcular parâmetros mais conservadores
-        # 🎯 CORREÇÃO: Verificar ignore_safety_stock
         if getattr(self, '_ignore_safety_stock', False):
-            safety_stock = 0.0  # Ignorar estoque de segurança
+            safety_stock = 0.0
         else:
             safety_stock = self._calculate_safety_stock(
-                demand_stats['std'], leadtime_days
+                demand_stats['std'], leadtime_days,
+                avg_demand=demand_stats['mean']
             )
         
         # Usar períodos menores para lead time curto
@@ -907,9 +943,7 @@ class MRPOptimizer:
         annual_demand = monthly_demand * 12
         
         if self.params.enable_eoq_optimization and annual_demand > 0:
-            # Custo de manutenção mais realista
-            unit_value = 100  # Valor unitário estimado
-            holding_cost_per_unit = unit_value * self.params.holding_cost_rate
+            holding_cost_per_unit = self.params.unit_value * self.params.holding_cost_rate
             
             eoq = self._calculate_eoq(
                 annual_demand,
@@ -1002,12 +1036,12 @@ class MRPOptimizer:
         batches = []
         
         # Para lead time médio, usar política (s,S)
-        # 🎯 CORREÇÃO: Verificar ignore_safety_stock
         if getattr(self, '_ignore_safety_stock', False):
-            safety_stock = 0.0  # Ignorar estoque de segurança
+            safety_stock = 0.0
         else:
             safety_stock = self._calculate_safety_stock(
-                demand_stats['std'], leadtime_days
+                demand_stats['std'], leadtime_days,
+                avg_demand=demand_stats['mean']
             )
         
         # Calcular s (ponto de reposição) e S (nível máximo)
@@ -1020,7 +1054,7 @@ class MRPOptimizer:
         eoq = self._calculate_eoq(
             annual_demand,
             self.params.setup_cost,
-            self.params.holding_cost_rate * demand_stats['mean']
+            self.params.unit_value * self.params.holding_cost_rate
         )
         S = s + eoq
         
@@ -1822,7 +1856,7 @@ class MRPOptimizer:
         🎯 NOVO: Gera batches de produção excessiva (sobreprodução)
         
         Quando o cliente quer produzir mesmo tendo estoque suficiente,
-        geramos lotes REAIS (não informativos) que serão contabilizados
+        geramos lotes de sobreprodução que serão contabilizados
         como produção real.
         """
         batches = []
@@ -1836,7 +1870,7 @@ class MRPOptimizer:
         # Garantir que não seja zero
         excess_quantity = max(1, excess_quantity)
         
-        # Posicionamento no tempo (similar aos lotes informativos)
+        # Posicionamento no tempo
         period_days = (end_period - start_period).days + 1
         order_offset_days = period_days // 2  # Meio do período
         
@@ -1879,7 +1913,7 @@ class MRPOptimizer:
                 'excess_production': True
             }
             
-            # Criar lote de produção excessiva (REAL, não informativo)
+            # Criar lote de produção excessiva
             batch = BatchResult(
                 order_date=order_date.strftime('%Y-%m-%d'),
                 arrival_date=arrival_date.strftime('%Y-%m-%d'),
@@ -2059,23 +2093,28 @@ class MRPOptimizer:
                 proximo_lote = batches[i + 1]
                 estoque_final_lote = stock_by_date.get(proximo_lote.arrival_date, {}).get('before_arrivals', 0)
             
-            # CONSUMO DO LOTE: demanda total do período que o lote está cobrindo
-            # Mais intuitivo: representa a demanda total que o lote deve atender
+            # CONSUMO DO LOTE: demanda real entre a chegada deste lote e a próxima referência
             if i == len(batches) - 1:
-                # Último lote: demanda total do período
-                consumo_do_lote = demand_df['demand'].sum()
+                end_ref = simulation_end.strftime('%Y-%m-%d')
             else:
-                # Outros lotes: demanda parcial baseada na posição do lote
-                total_demand = demand_df['demand'].sum()
-                consumo_do_lote = total_demand / len(batches)  # Dividir proporcionalmente
+                end_ref = batches[i + 1].arrival_date
             
-            # Calcular consumo desde última chegada
+            consumo_do_lote = 0.0
+            for date_str_key, day_data in stock_by_date.items():
+                if date_str_key >= arrival_date and date_str_key <= end_ref:
+                    consumo_do_lote += day_data.get('daily_demand', 0)
+            
             if last_arrival_date and last_arrival_date in stock_by_date:
                 consumption_since_last = self._calculate_consumption_between_dates(
                     demand_df, last_arrival_date, arrival_date
                 )
             else:
-                consumption_since_last = initial_stock - stock_before
+                start_str = simulation_start.strftime('%Y-%m-%d')
+                consumption_since_last = self._calculate_consumption_between_dates(
+                    demand_df, start_str, arrival_date
+                )
+                if consumption_since_last == 0:
+                    consumption_since_last = initial_stock - stock_before
             
             # Atualizar analytics
             updated_analytics = batch.analytics.copy()
@@ -2124,31 +2163,31 @@ class MRPOptimizer:
         batches: List[BatchResult],
         original_demand_df: pd.DataFrame
     ) -> pd.DataFrame:
-        """Expande período de simulação desde primeiro order_date até última chegada"""
+        """Expande período de simulação desde primeiro order_date até última chegada,
+        propagando a demanda média diária para os dias expandidos."""
         if not batches:
             return original_demand_df
             
-        # Encontrar primeiro order_date e última chegada
         first_order_date = min(pd.to_datetime(batch.order_date) for batch in batches)
         last_arrival_date = max(pd.to_datetime(batch.arrival_date) for batch in batches)
         
         original_start = original_demand_df.index[0]
         original_end = original_demand_df.index[-1]
         
-        # Determinar período expandido
         start_date = min(first_order_date, original_start)
         end_date = max(last_arrival_date, original_end)
         
-        # Se não precisa expandir, retornar original
         if start_date >= original_start and end_date <= original_end:
             return original_demand_df
+        
+        avg_daily_demand = original_demand_df['demand'].mean()
+        if pd.isna(avg_daily_demand) or avg_daily_demand <= 0:
+            avg_daily_demand = 0.0
             
-        # Criar DataFrame expandido desde primeiro order_date até última chegada
         expanded_range = pd.date_range(start=start_date, end=end_date, freq='D')
         expanded_df = pd.DataFrame(index=expanded_range, columns=['demand'])
-        expanded_df['demand'] = 0.0  # Zero demanda fora do período original
+        expanded_df['demand'] = avg_daily_demand
         
-        # Copiar demandas do período original
         for date in original_demand_df.index:
             if date in expanded_df.index:
                 expanded_df.loc[date, 'demand'] = original_demand_df.loc[date, 'demand']
@@ -2163,11 +2202,7 @@ class MRPOptimizer:
         demand_stats: Dict
     ) -> Dict:
         """Calcula métricas analíticas do plano - compatível com formato PHP"""
-        # 🎯 CORREÇÃO: Calcular total produzido excluindo lotes informativos
-        total_produced = sum(
-            b.quantity for b in batches 
-            if not b.analytics.get('informative_batch', False)
-        )
+        total_produced = sum(b.quantity for b in batches)
         total_demand = demand_df['demand'].sum()
         
         # 🎯 CORREÇÃO: Expandir período de simulação desde primeiro order_date
@@ -2182,6 +2217,9 @@ class MRPOptimizer:
         stock_evolution = {}
         for i, date in enumerate(expanded_demand_df.index):
             stock_evolution[date.strftime('%Y-%m-%d')] = round(stock_evolution_list[i], 2)
+        
+        if not stock_evolution_list:
+            return self._get_empty_analytics(initial_stock, demand_df)
         
         # Encontrar mínimo e sua data
         min_stock = min(stock_evolution_list)
@@ -2217,17 +2255,9 @@ class MRPOptimizer:
             stock_evolution, batches, demand_stats['mean']
         )
         
-        # Extrair order_dates (apenas lotes não informativos)
-        order_dates = [
-            b.order_date for b in batches 
-            if not b.analytics.get('informative_batch', False)
-        ]
+        order_dates = [b.order_date for b in batches]
         
-        # Calcular número de batches reais (não informativos)
-        real_batches_count = len([
-            b for b in batches 
-            if not b.analytics.get('informative_batch', False)
-        ])
+        real_batches_count = len(batches)
         
         # Montar estrutura final compatível com PHP
         return {
@@ -2239,7 +2269,7 @@ class MRPOptimizer:
                 'stockout_occurred': bool(min_stock < 0),
                 'total_batches': real_batches_count,
                 'total_produced': round(total_produced, 2),
-                'production_coverage_rate': f"{round((total_produced / total_demand * 100), 0):.0f}%",
+                'production_coverage_rate': f"{round((total_produced / total_demand * 100), 0):.0f}%" if total_demand > 0 else "0%",
                 'stock_consumed': round(stock_consumed, 2)
             },
             'stock_evolution': stock_evolution,
@@ -2265,31 +2295,22 @@ class MRPOptimizer:
         stock_levels = []
         current_stock = initial_stock
         
-        # 🎯 CORREÇÃO: Considerar lotes que chegaram antes do período de simulação
         simulation_start = demand_df.index[0]
         
-        # Adicionar ao estoque inicial os lotes que chegaram antes da simulação começar
         for batch in batches:
             arrival_date = pd.to_datetime(batch.arrival_date)
             if arrival_date < simulation_start:
-                # 🎯 NOVO: Não considerar lotes informativos na simulação real
-                is_informative = batch.analytics.get('informative_batch', False)
-                if not is_informative:
-                    current_stock += batch.quantity
+                current_stock += batch.quantity
         
-        # Criar dicionário de chegadas (apenas para lotes dentro do período)
         arrivals = {}
         for batch in batches:
             arrival_date = batch.arrival_date
             arrival_dt = pd.to_datetime(arrival_date)
-            if arrival_dt >= simulation_start:  # Só considerar lotes dentro do período
-                # 🎯 NOVO: Não considerar lotes informativos na simulação real
-                is_informative = batch.analytics.get('informative_batch', False)
-                if not is_informative:
-                    if arrival_date in arrivals:
-                        arrivals[arrival_date] += batch.quantity
-                    else:
-                        arrivals[arrival_date] = batch.quantity
+            if arrival_dt >= simulation_start:
+                if arrival_date in arrivals:
+                    arrivals[arrival_date] += batch.quantity
+                else:
+                    arrivals[arrival_date] = batch.quantity
         
         for date in demand_df.index:
             date_str = date.strftime('%Y-%m-%d')
@@ -2315,15 +2336,11 @@ class MRPOptimizer:
         demand_stats: Dict
     ) -> Dict:
         """Estima custo total da política"""
-        # Custo de setup/pedido
         setup_cost = len(batches) * self.params.setup_cost
         
-        # Custo de manutenção (assumindo valor unitário médio)
-        # Nota: Em produção real, você passaria o valor unitário do produto
-        unit_value = 100  # Valor placeholder
-        holding_cost = avg_stock * unit_value * self.params.holding_cost_rate / 365 * 184  # ~6 meses
+        unit_value = self.params.unit_value
+        holding_cost = avg_stock * unit_value * self.params.holding_cost_rate / 365 * 184
         
-        # Custo de falta
         stockout_cost = stockouts * demand_stats['mean'] * unit_value * self.params.stockout_cost_multiplier
         
         total_cost = setup_cost + holding_cost + stockout_cost
@@ -4117,10 +4134,10 @@ class MRPOptimizer:
         groups = []
         
         # Parâmetros de agrupamento mais flexíveis
-        max_consolidation_window = min(max_gap_days, 60)  # Janela maior para consolidação
+        max_consolidation_window = min(max_gap_days, 60)
         min_economic_batch_size = getattr(self.params, 'min_batch_size', 200)
         setup_cost = getattr(self.params, 'setup_cost', 250)
-        holding_cost_rate = getattr(self.params, 'holding_cost_rate', 0.002)  # Por dia
+        daily_holding_cost_per_unit = self.params.unit_value * self.params.holding_cost_rate / 365
         
         # Fatores adicionais para consolidação mais inteligente
         lead_time_buffer = leadtime_days + safety_days  # Buffer total de tempo
@@ -4168,7 +4185,7 @@ class MRPOptimizer:
                 
                 # Custo adicional de carregamento (mais refinado)
                 additional_holding_days = gap_days
-                holding_cost_increase = demand_list[j]['quantity'] * holding_cost_rate * additional_holding_days
+                holding_cost_increase = demand_list[j]['quantity'] * daily_holding_cost_per_unit * additional_holding_days
                 
                 # NOVA LÓGICA: Benefícios operacionais adicionais
                 operational_benefits = 0

@@ -31,7 +31,7 @@ class FeriadosBrasil:
         # Black Friday (última sexta-feira de novembro)
         "black_friday": {"descrição": "Black Friday", "mês": 11, "dia_semana": 4, "semana": -1},
         # Cyber Monday (primeira segunda-feira após a Black Friday)
-        "cyber_monday": {"descrição": "Cyber Monday", "mês": 11, "dia_semana": 0, "semana": -1, "ajuste": 3},
+        "cyber_monday": {"descrição": "Cyber Monday", "mês": 11, "dia_semana": 4, "semana": -1, "ajuste": 3},
         # Véspera de Natal
         "vespera_natal": {"descrição": "Véspera de Natal", "mês": 12, "dia": 24},
         # Véspera de Ano Novo
