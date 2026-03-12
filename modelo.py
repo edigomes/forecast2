@@ -1934,7 +1934,7 @@ class ModeloAjustado:
         chart_data = getattr(self, '_chart_data', {}).get(item_id)
         if chart_data:
             ds_str = date.strftime("%Y-%m-%d") if hasattr(date, 'strftime') else str(date)[:10]
-            svg = generate_forecast_chart_svg(chart_data, width=480, height=200, highlight_ds=ds_str)
+            svg = generate_forecast_chart_svg(chart_data, width=480, height=220, highlight_ds=ds_str)
             if svg:
                 html += f"""
             <div style="margin-top: 10px; padding: 8px; background: #fff; border: 1px solid #e0e0e0; border-radius: 4px;">

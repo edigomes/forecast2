@@ -66,7 +66,7 @@ def _format_number(val: float) -> str:
 def generate_forecast_chart_svg(
     chart_data: Dict,
     width: int = 600,
-    height: int = 260,
+    height: int = 280,
     highlight_ds: Optional[str] = None
 ) -> str:
     """Gera SVG inline com gráfico de linha: histórico + previsão + IC.
@@ -86,7 +86,7 @@ def generate_forecast_chart_svg(
     if not historical and not forecast:
         return ""
 
-    margin = {"top": 20, "right": 20, "bottom": 40, "left": 55}
+    margin = {"top": 28, "right": 20, "bottom": 40, "left": 55}
     plot_w = width - margin["left"] - margin["right"]
     plot_h = height - margin["top"] - margin["bottom"]
 
@@ -196,15 +196,24 @@ def generate_forecast_chart_svg(
             parts.append(f'<path d="{fc_d}" fill="none" stroke="#FF9800" '
                          f'stroke-width="2" stroke-dasharray="5,3"/>')
 
-    for i, p in hist_pts:
-        parts.append(f'<circle cx="{x_pos(i):.1f}" cy="{y_pos(p["val"]):.1f}" '
-                     f'r="3" fill="#1976D2"/>')
-    for i, p in fc_points:
+    for idx, (i, p) in enumerate(hist_pts):
+        cx, cy = x_pos(i), y_pos(p["val"])
+        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="3" fill="#1976D2"/>')
+        label_y = cy - 8 if idx % 2 == 0 else cy + 14
+        parts.append(f'<text x="{cx:.1f}" y="{label_y:.1f}" text-anchor="middle" '
+                     f'fill="#1565C0" font-size="8" font-weight="bold">'
+                     f'{_format_number(p["val"])}</text>')
+
+    for idx, (i, p) in enumerate(fc_points):
+        cx, cy = x_pos(i), y_pos(p["val"])
         is_highlight = highlight_ds and p["ds"].startswith(highlight_ds[:10])
         r = "5" if is_highlight else "3"
         stroke = ' stroke="#E65100" stroke-width="2"' if is_highlight else ""
-        parts.append(f'<circle cx="{x_pos(i):.1f}" cy="{y_pos(p["val"]):.1f}" '
-                     f'r="{r}" fill="#FF9800"{stroke}/>')
+        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r}" fill="#FF9800"{stroke}/>')
+        label_y = cy - 8 if idx % 2 == 0 else cy + 14
+        parts.append(f'<text x="{cx:.1f}" y="{label_y:.1f}" text-anchor="middle" '
+                     f'fill="#E65100" font-size="8" font-weight="bold">'
+                     f'{_format_number(p["val"])}</text>')
 
     legend_y = height - 6
     lx = margin["left"]
