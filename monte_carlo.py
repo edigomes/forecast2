@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 
@@ -32,19 +33,8 @@ def run_monte_carlo_simulation(
     
     Simula N cenários variando demanda diária e lead time para calcular
     distribuições de estoque, probabilidade de stockout e métricas de risco.
-    
-    Args:
-        avg_demand: Demanda média diária
-        demand_std: Desvio padrão da demanda diária
-        leadtime_days: Lead time médio em dias
-        leadtime_std: Desvio padrão do lead time
-        initial_stock: Estoque inicial
-        batches: Lista de lotes planejados [{arrival_date, quantity}]
-        simulation_days: Dias a simular
-        n_simulations: Número de simulações
-        seed: Seed para reprodutibilidade
     """
-    if avg_demand <= 0 or n_simulations <= 0:
+    if avg_demand <= 0 or n_simulations <= 0 or simulation_days <= 0:
         return _empty_result()
     
     rng = np.random.default_rng(seed)
@@ -54,7 +44,7 @@ def run_monte_carlo_simulation(
     stockout_counts = np.zeros(n_simulations)
     service_levels = np.zeros(n_simulations)
     
-    batch_arrivals = _parse_batch_arrivals(batches, leadtime_days)
+    batch_arrivals = _parse_batch_arrivals(batches)
     
     for sim in range(n_simulations):
         demands = rng.normal(avg_demand, max(demand_std, 0.01), simulation_days)
@@ -126,32 +116,31 @@ def run_monte_carlo_simulation(
     }
 
 
-def _parse_batch_arrivals(batches: List[Dict], base_leadtime: int) -> Dict[int, float]:
-    """Converte lista de batches em mapa de dia -> quantidade de chegada"""
+def _parse_batch_arrivals(batches: List[Dict]) -> Dict[int, float]:
+    """Converte lista de batches em mapa de dia -> quantidade de chegada.
+    
+    Usa a menor arrival_date como dia 0 de referência.
+    """
     arrivals = {}
     if not batches:
         return arrivals
     
-    import pandas as pd
-    
-    first_date = None
+    first_arrival = None
     for b in batches:
         arrival = b.get('arrival_date', '')
         if arrival:
             dt = pd.to_datetime(arrival)
-            if first_date is None or dt < first_date:
-                order_dt = pd.to_datetime(b.get('order_date', arrival))
-                first_date = order_dt
+            if first_arrival is None or dt < first_arrival:
+                first_arrival = dt
     
-    if first_date is None:
+    if first_arrival is None:
         return arrivals
     
     for b in batches:
         arrival = b.get('arrival_date', '')
         if arrival:
             dt = pd.to_datetime(arrival)
-            day = (dt - first_date).days
-            day = max(0, day)
+            day = max(0, (dt - first_arrival).days)
             qty = float(b.get('quantity', 0))
             arrivals[day] = arrivals.get(day, 0) + qty
     

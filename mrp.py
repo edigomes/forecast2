@@ -5,14 +5,10 @@ from typing import Dict, List, Tuple, Optional
 from scipy import stats
 from dataclasses import dataclass
 import json
+import logging
 from monte_carlo import run_monte_carlo_simulation
 
-# Tentar importar supplychainpy, mas não falhar se não estiver disponível
-try:
-    from supplychainpy import model_demand, model_inventory, eoq, demand
-    SUPPLYCHAINPY_AVAILABLE = True
-except ImportError:
-    SUPPLYCHAINPY_AVAILABLE = False
+logger = logging.getLogger(__name__)
 
 
 def clean_for_json(obj):
@@ -298,13 +294,13 @@ class MRPOptimizer:
         
         # Custo total estimado
         total_cost = self._estimate_total_cost(
-            batches, avg_stock, stockouts, demand_stats
+            batches, avg_stock, stockouts, demand_stats, len(stock_evolution_list)
         )
         
         # Cenários what-if (simplificados)
         if demand_stats['total'] > 0 and avg_stock > 0:
             what_if_scenarios = self._calculate_what_if_scenarios(
-                demand_df, initial_stock, demand_stats
+                demand_df, initial_stock, demand_stats, leadtime_days
             )
         else:
             what_if_scenarios = {'message': 'Dados insuficientes para cenários what-if'}
@@ -455,12 +451,12 @@ class MRPOptimizer:
         
         # Calcular aderência ao EOQ
         avg_batch_size = total_quantity / len(batches)
-        eoq_adherence = 1 - abs(avg_batch_size - theoretical_eoq) / theoretical_eoq if theoretical_eoq > 0 else 0
+        eoq_adherence = max(0, 1 - abs(avg_batch_size - theoretical_eoq) / theoretical_eoq) if theoretical_eoq > 0 else 0
         
         # Calcular economia de consolidação
         if self.params.enable_consolidation:
-            # Estimar quantos pedidos teriam sem consolidação
-            estimated_orders_without = len(demand_stats) // self.params.consolidation_window_days
+            period_days = int(demand_stats['total'] / demand_stats['mean']) if demand_stats.get('mean', 0) > 0 else 30
+            estimated_orders_without = max(1, period_days // max(1, self.params.consolidation_window_days))
             consolidation_savings = max(0, estimated_orders_without - len(batches)) * self.params.setup_cost
         else:
             consolidation_savings = 0
@@ -580,37 +576,38 @@ class MRPOptimizer:
         self,
         demand_df: pd.DataFrame,
         initial_stock: float,
-        demand_stats: Dict
+        demand_stats: Dict,
+        leadtime_days: int = 7
     ) -> Dict:
         """Calcula cenários what-if para análise de sensibilidade"""
         scenarios = {}
+        lt = max(1, leadtime_days)
         
         # Cenário 1: Aumento de 20% na demanda
         increased_demand = demand_stats['mean'] * 1.2
         safety_stock_increase = self._calculate_safety_stock(
-            demand_stats['std'] * 1.2, 7, self.params.service_level
+            demand_stats['std'] * 1.2, lt, self.params.service_level
         )
         
         scenarios['demand_increase_20%'] = {
             'additional_stock_needed': round(safety_stock_increase - 
-                self._calculate_safety_stock(demand_stats['std'], 7, self.params.service_level), 2),
+                self._calculate_safety_stock(demand_stats['std'], lt, self.params.service_level), 2),
             'additional_orders_per_month': round((increased_demand - demand_stats['mean']) * 30 / 
                                                 self.params.min_batch_size, 1),
             'cost_impact': round((increased_demand - demand_stats['mean']) * 365 * 100 * 0.2, 2)
         }
         
         # Cenário 2: Redução de lead time em 50%
-        current_lead_time = 7  # assumindo
-        new_lead_time = current_lead_time // 2
+        new_lead_time = max(1, lt // 2)
         
         scenarios['leadtime_reduction_50%'] = {
             'safety_stock_reduction': round(
-                self._calculate_safety_stock(demand_stats['std'], current_lead_time, self.params.service_level) -
+                self._calculate_safety_stock(demand_stats['std'], lt, self.params.service_level) -
                 self._calculate_safety_stock(demand_stats['std'], new_lead_time, self.params.service_level), 2
             ),
             'working_capital_freed': round(
-                (self._calculate_safety_stock(demand_stats['std'], current_lead_time, self.params.service_level) -
-                 self._calculate_safety_stock(demand_stats['std'], new_lead_time, self.params.service_level)) * 100, 2
+                (self._calculate_safety_stock(demand_stats['std'], lt, self.params.service_level) -
+                 self._calculate_safety_stock(demand_stats['std'], new_lead_time, self.params.service_level)) * self.params.unit_value, 2
             ),
             'flexibility_improvement': 'Alta - resposta 50% mais rápida a mudanças de demanda'
         }
@@ -618,10 +615,10 @@ class MRPOptimizer:
         # Cenário 3: Implementação de previsão perfeita
         scenarios['perfect_forecast'] = {
             'safety_stock_elimination': round(
-                self._calculate_safety_stock(demand_stats['std'], 7, self.params.service_level), 2
+                self._calculate_safety_stock(demand_stats['std'], lt, self.params.service_level), 2
             ),
             'cost_savings': round(
-                self._calculate_safety_stock(demand_stats['std'], 7, self.params.service_level) * 100 * 0.2, 2
+                self._calculate_safety_stock(demand_stats['std'], lt, self.params.service_level) * self.params.unit_value * self.params.holding_cost_rate, 2
             ),
             'feasibility': 'Baixa - considere melhorias incrementais na previsão'
         }
@@ -1168,7 +1165,7 @@ class MRPOptimizer:
                 # Para casos extremos padrão (45-74 dias)
                 max_batches_extreme = max(base_max_batches, int(leadtime_days / 15))  # 1 lote a cada 15 dias
                 max_batches_extreme = min(max_batches_extreme, 8)  # Máximo 8 lotes
-            print(f"🔥 Lead time extremo ({leadtime_days} dias): aumentando max_batches de {base_max_batches} para {max_batches_extreme}")
+            logger.debug(f"🔥 Lead time extremo ({leadtime_days} dias): aumentando max_batches de {base_max_batches} para {max_batches_extreme}")
         else:
             max_batches_extreme = base_max_batches
         
@@ -1243,13 +1240,13 @@ class MRPOptimizer:
             extreme_leadtime_factor = 1.0
             if leadtime_days >= 75:
                 extreme_leadtime_factor = 2.5  # 150% mais compensação para casos ultra-extremos
-                print(f"🔥 Lead time ultra-extremo: aplicando fator de compensação {extreme_leadtime_factor}x")
+                logger.debug(f"🔥 Lead time ultra-extremo: aplicando fator de compensação {extreme_leadtime_factor}x")
             elif leadtime_days >= 60:
                 extreme_leadtime_factor = 2.0  # 100% mais compensação para casos muito extremos  
-                print(f"🔥 Lead time muito extremo: aplicando fator de compensação {extreme_leadtime_factor}x")
+                logger.debug(f"🔥 Lead time muito extremo: aplicando fator de compensação {extreme_leadtime_factor}x")
             elif leadtime_days >= 45:
                 extreme_leadtime_factor = 1.5  # 50% mais compensação para casos extremos
-                print(f"🔥 Lead time extremo: aplicando fator de compensação {extreme_leadtime_factor}x")
+                logger.debug(f"🔥 Lead time extremo: aplicando fator de compensação {extreme_leadtime_factor}x")
             
             # 🎯 CORREÇÃO CRÍTICA: Para ignore_safety_stock=True, aplicar compensação obrigatória
             if getattr(self, '_ignore_safety_stock', False):
@@ -1258,18 +1255,18 @@ class MRPOptimizer:
                     critical_gap_deficit = total_gap_consumption - quantity_needed
                     mandatory_compensation = critical_gap_deficit * 1.1 * extreme_leadtime_factor  # Aplicar fator extremo
                     quantity_per_batch += mandatory_compensation / num_batches
-                    print(f"🚨 CORREÇÃO CRÍTICA (ignore_safety_stock): compensando {mandatory_compensation / num_batches:.0f} unidades por lote para evitar stockout")
+                    logger.debug(f"🚨 CORREÇÃO CRÍTICA (ignore_safety_stock): compensando {mandatory_compensation / num_batches:.0f} unidades por lote para evitar stockout")
                 elif leadtime_days >= 40:
                     # Para lead times extremamente longos, garantir compensação mínima obrigatória
                     min_mandatory_compensation = total_gap_consumption * 0.8 * extreme_leadtime_factor  # Aplicar fator extremo
                     quantity_per_batch += min_mandatory_compensation / num_batches
-                    print(f"🚨 COMPENSAÇÃO OBRIGATÓRIA (ignore_safety_stock): {min_mandatory_compensation / num_batches:.0f} unidades por lote")
+                    logger.debug(f"🚨 COMPENSAÇÃO OBRIGATÓRIA (ignore_safety_stock): {min_mandatory_compensation / num_batches:.0f} unidades por lote")
                 
                 # EXTRA: Para casos extremos de lead time muito longo (>45 dias), compensação adicional
                 if leadtime_days >= 45:
                     extra_buffer = total_gap_consumption * 0.5 * extreme_leadtime_factor  # Aumentado de 30% para 50% + fator extremo
                     quantity_per_batch += extra_buffer / num_batches
-                    print(f"🔥 BUFFER EXTRA (lead time ≥45 dias): {extra_buffer / num_batches:.0f} unidades por lote")
+                    logger.debug(f"🔥 BUFFER EXTRA (lead time ≥45 dias): {extra_buffer / num_batches:.0f} unidades por lote")
             else:
                 # Lógica original para casos com safety stock
                 # Se gaps consomem mais que a produção planejada, compensar
@@ -1277,7 +1274,7 @@ class MRPOptimizer:
                     gap_deficit = total_gap_consumption - total_planned_production
                     compensation = gap_deficit * 0.8 * extreme_leadtime_factor  # Aplicar fator extremo
                     quantity_per_batch += compensation / num_batches
-                    print(f"⚠️  Gap crítico detectado (non-exact): aumentando cada lote em {compensation / num_batches:.0f} unidades")
+                    logger.debug(f"⚠️  Gap crítico detectado (non-exact): aumentando cada lote em {compensation / num_batches:.0f} unidades")
                 else:
                     # Para lead times muito longos, garantir produção adequada
                     if leadtime_days >= 45:
@@ -1289,12 +1286,12 @@ class MRPOptimizer:
                             shortfall = total_requirement - total_planned_production
                             gap_compensation = (shortfall + (total_gap_consumption * 0.5)) * extreme_leadtime_factor  # Aumentado de 30% para 50% + fator extremo
                             quantity_per_batch += gap_compensation / num_batches
-                            print(f"⚠️  Produção insuficiente (non-exact): compensando {gap_compensation / num_batches:.0f} unidades por lote")
+                            logger.debug(f"⚠️  Produção insuficiente (non-exact): compensando {gap_compensation / num_batches:.0f} unidades por lote")
                         else:
                             # Mesmo se produção é suficiente, compensar gaps mínimos
                             min_gap_compensation = total_gap_consumption * 0.4 * extreme_leadtime_factor  # Aumentado de 20% para 40% + fator extremo
                             quantity_per_batch += min_gap_compensation / num_batches
-                            print(f"⚠️  Compensação de gaps (non-exact): {min_gap_compensation / num_batches:.0f} unidades por lote")
+                            logger.debug(f"⚠️  Compensação de gaps (non-exact): {min_gap_compensation / num_batches:.0f} unidades por lote")
         
         # Criar os lotes com espaçamento adequado
         current_order_date = first_order_date
@@ -1346,7 +1343,7 @@ class MRPOptimizer:
                     extreme_leadtime_factor_exact = 1.5  # 50% mais compensação para casos extremos
                     
                 adjusted_quantity_needed = quantity_needed + (gap_deficit * 0.9 * extreme_leadtime_factor_exact)  # Aumentado de 80% para 90% + fator extremo
-                print(f"⚠️  Gap crítico detectado (exact): aumentando produção em {gap_deficit * 0.9 * extreme_leadtime_factor_exact:.0f} unidades")
+                logger.debug(f"⚠️  Gap crítico detectado (exact): aumentando produção em {gap_deficit * 0.9 * extreme_leadtime_factor_exact:.0f} unidades")
             else:
                 # 🔥 CORREÇÃO: Mesmo sem gap crítico, para lead times extremos aplicar compensação mínima
                 extreme_leadtime_factor_exact = 1.0
@@ -1354,17 +1351,17 @@ class MRPOptimizer:
                     extreme_leadtime_factor_exact = 2.0  # 100% mais compensação para casos ultra-extremos
                     min_compensation = total_gap_consumption * 0.5 * extreme_leadtime_factor_exact  # 50% dos gaps
                     adjusted_quantity_needed = quantity_needed + min_compensation
-                    print(f"🔥 Compensação mínima para lead time ultra-extremo (exact): {min_compensation:.0f} unidades")
+                    logger.debug(f"🔥 Compensação mínima para lead time ultra-extremo (exact): {min_compensation:.0f} unidades")
                 elif leadtime_days >= 60:
                     extreme_leadtime_factor_exact = 1.6  # 60% mais compensação para casos muito extremos
                     min_compensation = total_gap_consumption * 0.4 * extreme_leadtime_factor_exact  # 40% dos gaps
                     adjusted_quantity_needed = quantity_needed + min_compensation
-                    print(f"🔥 Compensação mínima para lead time muito extremo (exact): {min_compensation:.0f} unidades")
+                    logger.debug(f"🔥 Compensação mínima para lead time muito extremo (exact): {min_compensation:.0f} unidades")
                 elif leadtime_days >= 45:
                     extreme_leadtime_factor_exact = 1.2  # 20% mais compensação para casos extremos
                     min_compensation = total_gap_consumption * 0.3 * extreme_leadtime_factor_exact  # 30% dos gaps
                     adjusted_quantity_needed = quantity_needed + min_compensation
-                    print(f"🔥 Compensação mínima para lead time extremo (exact): {min_compensation:.0f} unidades")
+                    logger.debug(f"🔥 Compensação mínima para lead time extremo (exact): {min_compensation:.0f} unidades")
                 else:
                     adjusted_quantity_needed = quantity_needed
             
@@ -1467,7 +1464,7 @@ class MRPOptimizer:
                 if projected_stock_before_arrival < 0:
                     stockout_risk_detected = True
                     deficit = abs(projected_stock_before_arrival)
-                    print(f"🚨 RISCO CRÍTICO: Stockout de {deficit:.0f} unidades antes do lote {i+1}")
+                    logger.debug(f"🚨 RISCO CRÍTICO: Stockout de {deficit:.0f} unidades antes do lote {i+1}")
                     critical_gap_found = True
                     break
                 
@@ -1476,7 +1473,7 @@ class MRPOptimizer:
             
             # Se detectou risco crítico, forçar lote de emergência
             if critical_gap_found and len(batches) <= max_batches_extreme:
-                print(f"🔥 CRIANDO LOTE DE EMERGÊNCIA para lead time extremo")
+                logger.debug(f"🔥 CRIANDO LOTE DE EMERGÊNCIA para lead time extremo")
                 
                 # Calcular quando fazer um lote de emergência
                 emergency_arrival_target = demand_df.index[0] + pd.Timedelta(days=int(days_of_coverage * 0.8))  # 80% da cobertura inicial
@@ -1513,7 +1510,7 @@ class MRPOptimizer:
                     if not inserted:
                         batches.append(emergency_batch)
                     
-                    print(f"✅ Lote de emergência criado: {emergency_quantity:.0f} unidades em {emergency_arrival_target.strftime('%Y-%m-%d')}")
+                    logger.debug(f"✅ Lote de emergência criado: {emergency_quantity:.0f} unidades em {emergency_arrival_target.strftime('%Y-%m-%d')}")
         
         return batches
     
@@ -1705,7 +1702,7 @@ class MRPOptimizer:
         if not stockout_periods:
             return batches
         
-        print(f"🚨 Stockout detectado em {len(stockout_periods)} períodos - aplicando correção automática")
+        logger.debug(f"🚨 Stockout detectado em {len(stockout_periods)} períodos - aplicando correção automática")
         
         # Calcular correção necessária
         max_deficit = max(period['deficit'] for period in stockout_periods)
@@ -1746,7 +1743,7 @@ class MRPOptimizer:
         
         # Se ainda há stockouts, aplicar correção adicional mais agressiva
         if remaining_stockouts > 0:
-            print(f"⚠️  Stockouts remanescentes detectados - aplicando correção adicional")
+            logger.debug(f"⚠️  Stockouts remanescentes detectados - aplicando correção adicional")
             
             remaining_deficit = abs(min(new_stock_evolution.values()))
             emergency_correction = remaining_deficit * 1.5  # 50% extra
@@ -1759,11 +1756,11 @@ class MRPOptimizer:
             final_stockouts = sum(1 for stock in final_stock_evolution.values() if stock < 0)
             
             if final_stockouts == 0:
-                print(f"✅ Correção de stockout bem-sucedida - todos os stockouts foram eliminados")
+                logger.debug(f"✅ Correção de stockout bem-sucedida - todos os stockouts foram eliminados")
             else:
-                print(f"⚠️  {final_stockouts} stockouts ainda permanecem após correção máxima")
+                logger.debug(f"⚠️  {final_stockouts} stockouts ainda permanecem após correção máxima")
         else:
-            print(f"✅ Correção de stockout bem-sucedida na primeira tentativa")
+            logger.debug(f"✅ Correção de stockout bem-sucedida na primeira tentativa")
         
         # Adicionar informação de correção nos analytics dos lotes modificados
         self._mark_corrected_batches(corrected_batches, batches, stockout_periods, leadtime_days)
@@ -1806,7 +1803,7 @@ class MRPOptimizer:
         
         batches[batch_index] = corrected_batch
         
-        print(f"📈 Lote {batch_index + 1}: {original_quantity:.0f} → {new_quantity:.0f} (+{increase_amount:.0f})")
+        logger.debug(f"📈 Lote {batch_index + 1}: {original_quantity:.0f} → {new_quantity:.0f} (+{increase_amount:.0f})")
     
     def _mark_corrected_batches(
         self, 
@@ -2333,13 +2330,14 @@ class MRPOptimizer:
         batches: List[BatchResult],
         avg_stock: float,
         stockouts: int,
-        demand_stats: Dict
+        demand_stats: Dict,
+        simulation_days: int = 180
     ) -> Dict:
         """Estima custo total da política"""
         setup_cost = len(batches) * self.params.setup_cost
         
         unit_value = self.params.unit_value
-        holding_cost = avg_stock * unit_value * self.params.holding_cost_rate / 365 * 184
+        holding_cost = avg_stock * unit_value * self.params.holding_cost_rate / 365 * simulation_days
         
         stockout_cost = stockouts * demand_stats['mean'] * unit_value * self.params.stockout_cost_multiplier
         
@@ -2684,7 +2682,7 @@ class MRPOptimizer:
             total_demand = sum(valid_demands.values())
             if initial_stock >= total_demand:
                 # Estoque inicial é suficiente - retornar sem lotes
-                print(f"🎯 IGNORE_SAFETY_STOCK: Estoque inicial ({initial_stock}) >= demanda total ({total_demand})")
+                logger.debug(f"🎯 IGNORE_SAFETY_STOCK: Estoque inicial ({initial_stock}) >= demanda total ({total_demand})")
                 print("🎯 Retornando SEM LOTES - estoque suficiente")
                 
                 # Calcular analytics básicos sem lotes
@@ -2725,9 +2723,9 @@ class MRPOptimizer:
                 # Isso garantirá que: initial_stock + produção = total_demand
                 # Resultado: estoque final = 0
                 deficit = total_demand - initial_stock
-                print(f"🎯 IGNORE_SAFETY_STOCK: Produzir apenas o déficit para zerar estoque")
-                print(f"🎯 Estoque inicial: {initial_stock}, Demanda total: {total_demand}")
-                print(f"🎯 Déficit a produzir: {deficit}")
+                logger.debug(f"🎯 IGNORE_SAFETY_STOCK: Produzir apenas o déficit para zerar estoque")
+                logger.debug(f"🎯 Estoque inicial: {initial_stock}, Demanda total: {total_demand}")
+                logger.debug(f"🎯 Déficit a produzir: {deficit}")
                 
                 # 🎯 IMPORTANTE: Definir flag para que as funções de planejamento ajustem a quantidade
                 self._exact_deficit_to_produce = deficit
@@ -3002,11 +3000,11 @@ class MRPOptimizer:
                 if remaining_groups == 0:
                     # Último grupo - produzir exatamente o que falta
                     batch_quantity = max(0, remaining_to_produce)
-                    print(f"🎯 ÚLTIMO GRUPO com ignore_safety_stock: produzir exatamente {batch_quantity} para zerar estoque")
+                    logger.debug(f"🎯 ÚLTIMO GRUPO com ignore_safety_stock: produzir exatamente {batch_quantity} para zerar estoque")
                 else:
                     # Não é o último - usar apenas o déficit, sem buffers
                     batch_quantity = shortfall  # Apenas o déficit, sem buffers
-                    print(f"🎯 GRUPO INTERMEDIÁRIO com ignore_safety_stock: produzir apenas déficit {batch_quantity}")
+                    logger.debug(f"🎯 GRUPO INTERMEDIÁRIO com ignore_safety_stock: produzir apenas déficit {batch_quantity}")
             elif is_long_leadtime:
                 # CORREÇÃO CRÍTICA: Para lead times longos, calcular cobertura mais ampla
                 remaining_demands_after_group = []
@@ -3080,7 +3078,7 @@ class MRPOptimizer:
                 if group_demand < min_batch_threshold:
                     # Demanda consolidada pequena - usar quantidade necessária sem forçar mínimo
                     batch_quantity = min(batch_quantity, getattr(self.params, 'max_batch_size', 15000))
-                    print(f"🎯 DEMANDA CONSOLIDADA PEQUENA: {group_demand} < {min_batch_threshold:.1f}, produzindo {batch_quantity:.2f} sem min_batch_size")
+                    logger.debug(f"🎯 DEMANDA CONSOLIDADA PEQUENA: {group_demand} < {min_batch_threshold:.1f}, produzindo {batch_quantity:.2f} sem min_batch_size")
                 else:
                     # Demanda normal - aplicar limites tradicionais
                     batch_quantity = max(batch_quantity, getattr(self.params, 'min_batch_size', 200))
@@ -3354,7 +3352,7 @@ class MRPOptimizer:
             if total_demand < min_batch_threshold:
                 # Demanda total pequena - usar quantidade necessária sem forçar mínimo
                 optimal_quantity = min(optimal_quantity, self.params.max_batch_size)
-                print(f"🎯 DEMANDA PEQUENA: {total_demand} < {min_batch_threshold:.1f}, produzindo {optimal_quantity:.2f} sem min_batch_size")
+                logger.debug(f"🎯 DEMANDA PEQUENA: {total_demand} < {min_batch_threshold:.1f}, produzindo {optimal_quantity:.2f} sem min_batch_size")
             else:
                 # Demanda normal - aplicar limites tradicionais
                 optimal_quantity = max(optimal_quantity, self.params.min_batch_size)

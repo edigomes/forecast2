@@ -622,149 +622,130 @@ def mrp_optimize():
         logger.error(traceback.format_exc())
         return jsonify({"error": f"Falha na otimização MRP: {str(ex)}"}), 500
 
+def _validate_sporadic_mrp_params(data: dict):
+    """Validação compartilhada para endpoints mrp_sporadic e mrp_advanced.
+    
+    Retorna (params_dict, None) em sucesso ou (None, error_response) em falha.
+    """
+    required_fields = [
+        'sporadic_demand', 'initial_stock', 'leadtime_days',
+        'period_start_date', 'period_end_date',
+        'start_cutoff_date', 'end_cutoff_date'
+    ]
+    
+    for field in required_fields:
+        if field not in data:
+            return None, (jsonify({"error": f"Campo obrigatório '{field}' não fornecido"}), 400)
+    
+    try:
+        initial_stock = float(data['initial_stock'])
+        leadtime_days = int(data['leadtime_days'])
+    except (ValueError, TypeError):
+        return None, (jsonify({"error": "initial_stock deve ser número e leadtime_days deve ser inteiro"}), 400)
+    
+    if initial_stock < 0:
+        return None, (jsonify({"error": "initial_stock não pode ser negativo"}), 400)
+    if leadtime_days < 0:
+        return None, (jsonify({"error": "leadtime_days não pode ser negativo"}), 400)
+    
+    sporadic_demand = data['sporadic_demand']
+    if not isinstance(sporadic_demand, dict) or not sporadic_demand:
+        return None, (jsonify({"error": "sporadic_demand deve ser dicionário não vazio"}), 400)
+    
+    for date_key, demand_value in sporadic_demand.items():
+        try:
+            pd.to_datetime(date_key)
+            demand_val = float(demand_value)
+            if demand_val < 0:
+                return None, (jsonify({"error": f"Demanda em '{date_key}' não pode ser negativa"}), 400)
+        except (ValueError, TypeError):
+            return None, (jsonify({"error": f"Formato inválido em sporadic_demand. Chave '{date_key}' deve ser YYYY-MM-DD e valor deve ser numérico positivo"}), 400)
+    
+    try:
+        period_start_date = data['period_start_date']
+        period_end_date = data['period_end_date']
+        start_cutoff_date = data['start_cutoff_date']
+        end_cutoff_date = data['end_cutoff_date']
+        
+        start_pd = pd.to_datetime(period_start_date)
+        end_pd = pd.to_datetime(period_end_date)
+        start_cutoff_pd = pd.to_datetime(start_cutoff_date)
+        end_cutoff_pd = pd.to_datetime(end_cutoff_date)
+        
+        if start_pd >= end_pd:
+            return None, (jsonify({"error": "period_start_date deve ser anterior a period_end_date"}), 400)
+        if start_cutoff_pd > end_cutoff_pd:
+            return None, (jsonify({"error": "start_cutoff_date deve ser anterior ou igual a end_cutoff_date"}), 400)
+    except (ValueError, TypeError, KeyError):
+        return None, (jsonify({"error": "Datas devem estar no formato YYYY-MM-DD"}), 400)
+    
+    safety_margin_percent = float(data.get('safety_margin_percent', 8.0))
+    safety_days = int(data.get('safety_days', 2))
+    minimum_stock_percent = float(data.get('minimum_stock_percent', 0.0))
+    max_gap_days = int(data.get('max_gap_days', 999))
+    
+    if safety_margin_percent < 0 or safety_margin_percent > 100:
+        return None, (jsonify({"error": "safety_margin_percent deve estar entre 0 e 100"}), 400)
+    if safety_days < 0:
+        return None, (jsonify({"error": "safety_days não pode ser negativo"}), 400)
+    if minimum_stock_percent < 0 or minimum_stock_percent > 100:
+        return None, (jsonify({"error": "minimum_stock_percent deve estar entre 0 e 100"}), 400)
+    if max_gap_days < 1:
+        return None, (jsonify({"error": "max_gap_days deve ser pelo menos 1"}), 400)
+    
+    return {
+        'initial_stock': initial_stock,
+        'leadtime_days': leadtime_days,
+        'sporadic_demand': sporadic_demand,
+        'period_start_date': period_start_date,
+        'period_end_date': period_end_date,
+        'start_cutoff_date': start_cutoff_date,
+        'end_cutoff_date': end_cutoff_date,
+        'safety_margin_percent': safety_margin_percent,
+        'safety_days': safety_days,
+        'minimum_stock_percent': minimum_stock_percent,
+        'max_gap_days': max_gap_days,
+    }, None
+
+
 @app.route('/mrp_sporadic', methods=['POST'])
 def mrp_sporadic():
-    """
-    Endpoint para planejamento de lotes para demandas esporádicas
-    
-    Parâmetros obrigatórios:
-    - sporadic_demand: Dict com demandas esporádicas {"YYYY-MM-DD": quantidade}
-    - initial_stock: Estoque inicial (float)
-    - leadtime_days: Lead time em dias (int)
-    - period_start_date: Data início do período (YYYY-MM-DD)
-    - period_end_date: Data fim do período (YYYY-MM-DD)
-    - start_cutoff_date: Data de corte inicial (YYYY-MM-DD)
-    - end_cutoff_date: Data de corte final (YYYY-MM-DD)
-    
-    Parâmetros opcionais:
-    - safety_margin_percent: Margem de segurança % (padrão: 8.0)
-    - safety_days: Dias de segurança (padrão: 2)
-    - minimum_stock_percent: Estoque mínimo % da maior demanda (padrão: 0.0)
-    - max_gap_days: Gap máximo entre lotes (padrão: 999)
-    
-    Parâmetros avançados de otimização (mesmos do MRP):
-    - setup_cost: Custo fixo por pedido (padrão: 250.0)
-    - holding_cost_rate: Taxa de custo de manutenção (padrão: 0.20)
-    - service_level: Nível de serviço desejado (padrão: 0.95)
-    - min_batch_size: Tamanho mínimo do lote (padrão: 200.0)
-    - max_batch_size: Tamanho máximo do lote (padrão: 10000.0)
-    - enable_consolidation: Habilitar consolidação de pedidos (padrão: True)
-    - enable_eoq_optimization: Habilitar otimização EOQ (padrão: True)
-    """
+    """Endpoint para planejamento de lotes para demandas esporádicas."""
     try:
         data = request.get_json(force=True) or {}
         logger.info("MRP Sporadic chamado")
         
-        required_fields = [
-            'sporadic_demand', 'initial_stock', 'leadtime_days',
-            'period_start_date', 'period_end_date', 
-            'start_cutoff_date', 'end_cutoff_date'
-        ]
+        params, error = _validate_sporadic_mrp_params(data)
+        if error:
+            return error
         
-        for field in required_fields:
-            if field not in data:
-                return jsonify({"error": f"Campo obrigatório '{field}' não fornecido"}), 400
-        
-        # Validar tipos de dados
-        try:
-            initial_stock = float(data['initial_stock'])
-            leadtime_days = int(data['leadtime_days'])
-        except (ValueError, TypeError):
-            return jsonify({"error": "initial_stock deve ser número e leadtime_days deve ser inteiro"}), 400
-        
-        if initial_stock < 0:
-            return jsonify({"error": "initial_stock não pode ser negativo"}), 400
-            
-        if leadtime_days < 0:
-            return jsonify({"error": "leadtime_days não pode ser negativo"}), 400
-        
-        # Validar sporadic_demand
-        sporadic_demand = data['sporadic_demand']
-        if not isinstance(sporadic_demand, dict) or not sporadic_demand:
-            return jsonify({"error": "sporadic_demand deve ser dicionário não vazio"}), 400
-        
-        # Validar formato das demandas esporádicas
-        for date_key, demand_value in sporadic_demand.items():
-            try:
-                # Verificar formato da data (YYYY-MM-DD)
-                pd.to_datetime(date_key)
-                # Verificar se demanda é numérica e positiva
-                demand_val = float(demand_value)
-                if demand_val < 0:
-                    return jsonify({"error": f"Demanda em '{date_key}' não pode ser negativa"}), 400
-            except (ValueError, TypeError):
-                return jsonify({"error": f"Formato inválido em sporadic_demand. Chave '{date_key}' deve ser YYYY-MM-DD e valor deve ser numérico positivo"}), 400
-        
-        # Validar datas
-        try:
-            period_start_date = data['period_start_date']
-            period_end_date = data['period_end_date']
-            start_cutoff_date = data['start_cutoff_date']
-            end_cutoff_date = data['end_cutoff_date']
-            
-            start_pd = pd.to_datetime(period_start_date)
-            end_pd = pd.to_datetime(period_end_date)
-            start_cutoff_pd = pd.to_datetime(start_cutoff_date)
-            end_cutoff_pd = pd.to_datetime(end_cutoff_date)
-            
-            if start_pd >= end_pd:
-                return jsonify({"error": "period_start_date deve ser anterior a period_end_date"}), 400
-            if start_cutoff_pd > end_cutoff_pd:
-                return jsonify({"error": "start_cutoff_date deve ser anterior ou igual a end_cutoff_date"}), 400
-            
-        except (ValueError, TypeError, KeyError):
-            return jsonify({"error": "Datas devem estar no formato YYYY-MM-DD"}), 400
-        
-        safety_margin_percent = float(data.get('safety_margin_percent', 8.0))
-        safety_days = int(data.get('safety_days', 2))
-        minimum_stock_percent = float(data.get('minimum_stock_percent', 0.0))
-        max_gap_days = int(data.get('max_gap_days', 999))
-        
-        # Validar parâmetros específicos
-        if safety_margin_percent < 0 or safety_margin_percent > 100:
-            return jsonify({"error": "safety_margin_percent deve estar entre 0 e 100"}), 400
-        if safety_days < 0:
-            return jsonify({"error": "safety_days não pode ser negativo"}), 400
-        if minimum_stock_percent < 0 or minimum_stock_percent > 100:
-            return jsonify({"error": "minimum_stock_percent deve estar entre 0 e 100"}), 400
-        if max_gap_days < 1:
-            return jsonify({"error": "max_gap_days deve ser pelo menos 1"}), 400
-        
-        # Extrair parâmetros avançados de otimização (opcionais)
         optimization_kwargs = {}
-        optional_params = [
-            'setup_cost', 'holding_cost_rate', 'stockout_cost_multiplier',
-            'service_level', 'min_batch_size', 'max_batch_size',
-            'review_period_days', 'consolidation_window_days',
-            'daily_production_capacity', 'enable_eoq_optimization', 'enable_consolidation',
-            'auto_calculate_max_batch_size', 'max_batch_multiplier'
-        ]
-        
-        for param in optional_params:
+        for param in ['setup_cost', 'holding_cost_rate', 'stockout_cost_multiplier',
+                      'service_level', 'min_batch_size', 'max_batch_size',
+                      'review_period_days', 'consolidation_window_days',
+                      'daily_production_capacity', 'enable_eoq_optimization', 'enable_consolidation',
+                      'auto_calculate_max_batch_size', 'max_batch_multiplier']:
             if param in data:
                 optimization_kwargs[param] = data[param]
         
         optimizer = MRPOptimizer()
         result = optimizer.calculate_batches_for_sporadic_demand(
-            sporadic_demand=sporadic_demand,
-            initial_stock=initial_stock,
-            leadtime_days=leadtime_days,
-            period_start_date=period_start_date,
-            period_end_date=period_end_date,
-            start_cutoff_date=start_cutoff_date,
-            end_cutoff_date=end_cutoff_date,
-            safety_margin_percent=safety_margin_percent,
-            safety_days=safety_days,
-            minimum_stock_percent=minimum_stock_percent,
-            max_gap_days=max_gap_days,
+            sporadic_demand=params['sporadic_demand'],
+            initial_stock=params['initial_stock'],
+            leadtime_days=params['leadtime_days'],
+            period_start_date=params['period_start_date'],
+            period_end_date=params['period_end_date'],
+            start_cutoff_date=params['start_cutoff_date'],
+            end_cutoff_date=params['end_cutoff_date'],
+            safety_margin_percent=params['safety_margin_percent'],
+            safety_days=params['safety_days'],
+            minimum_stock_percent=params['minimum_stock_percent'],
+            max_gap_days=params['max_gap_days'],
             **optimization_kwargs
         )
         
         logger.info(f"MRP Sporadic concluído - {len(result['batches'])} lotes planejados")
-        
-        result_converted = convert_numpy_types(result)
-        
-        return jsonify(result_converted)
+        return jsonify(convert_numpy_types(result))
         
     except Exception as ex:
         logger.error(f"Erro no planejamento de demanda esporádica: {str(ex)}")
@@ -773,92 +754,14 @@ def mrp_sporadic():
 
 @app.route('/mrp_advanced', methods=['POST'])
 def mrp_advanced():
-    """
-    Endpoint MRP Avançado com Analytics Estendidos
-    
-    Utiliza algoritmos avançados de supply chain incluindo:
-    - EOQ (Economic Order Quantity) calculations
-    - ABC/XYZ classification
-    - Análise de sazonalidade e tendências
-    - Múltiplas estratégias de planejamento
-    - Analytics estendidos com métricas de performance
-    - Integração com supplychainpy (quando disponível)
-    
-    Parâmetros especiais:
-    - ignore_safety_stock: bool (padrão: False) - Se True, ignora completamente 
-      estoque de segurança e permite que o estoque chegue próximo de zero
-    """
+    """Endpoint MRP Avançado com Analytics Estendidos."""
     try:
         data = request.get_json(force=True) or {}
         logger.info("MRP Advanced chamado")
         
-        required_fields = ['sporadic_demand', 'initial_stock', 'leadtime_days', 
-                          'period_start_date', 'period_end_date', 
-                          'start_cutoff_date', 'end_cutoff_date']
-        
-        for field in required_fields:
-            if field not in data:
-                return jsonify({"error": f"Campo obrigatório '{field}' não encontrado"}), 400
-        
-        # Extrair parâmetros básicos
-        initial_stock = float(data['initial_stock'])
-        leadtime_days = int(data['leadtime_days'])
-        
-        # Validar valores básicos
-        if initial_stock < 0:
-            return jsonify({"error": "initial_stock não pode ser negativo"}), 400
-        if leadtime_days < 0:
-            return jsonify({"error": "leadtime_days não pode ser negativo"}), 400
-        
-        # Validar sporadic_demand
-        sporadic_demand = data['sporadic_demand'] 
-        if not isinstance(sporadic_demand, dict) or not sporadic_demand:
-            return jsonify({"error": "sporadic_demand deve ser dicionário não vazio"}), 400
-        
-        # Validar formato das demandas esporádicas
-        for date_key, demand_value in sporadic_demand.items():
-            try:
-                pd.to_datetime(date_key)
-                demand_val = float(demand_value)
-                if demand_val < 0:
-                    return jsonify({"error": f"Demanda em '{date_key}' não pode ser negativa"}), 400
-            except (ValueError, TypeError):
-                return jsonify({"error": f"Formato inválido em sporadic_demand. Chave '{date_key}' deve ser YYYY-MM-DD e valor deve ser numérico positivo"}), 400
-        
-        # Validar datas
-        try:
-            period_start_date = data['period_start_date']
-            period_end_date = data['period_end_date']
-            start_cutoff_date = data['start_cutoff_date']
-            end_cutoff_date = data['end_cutoff_date']
-            
-            start_pd = pd.to_datetime(period_start_date)
-            end_pd = pd.to_datetime(period_end_date)
-            start_cutoff_pd = pd.to_datetime(start_cutoff_date)
-            end_cutoff_pd = pd.to_datetime(end_cutoff_date)
-            
-            if start_pd >= end_pd:
-                return jsonify({"error": "period_start_date deve ser anterior a period_end_date"}), 400
-            if start_cutoff_pd > end_cutoff_pd:
-                return jsonify({"error": "start_cutoff_date deve ser anterior ou igual a end_cutoff_date"}), 400
-            
-        except (ValueError, TypeError, KeyError):
-            return jsonify({"error": "Datas devem estar no formato YYYY-MM-DD"}), 400
-        
-        safety_margin_percent = float(data.get('safety_margin_percent', 8.0))
-        safety_days = int(data.get('safety_days', 2))
-        minimum_stock_percent = float(data.get('minimum_stock_percent', 0.0))
-        max_gap_days = int(data.get('max_gap_days', 999))
-        
-        # Validar parâmetros específicos
-        if safety_margin_percent < 0 or safety_margin_percent > 100:
-            return jsonify({"error": "safety_margin_percent deve estar entre 0 e 100"}), 400
-        if safety_days < 0:
-            return jsonify({"error": "safety_days não pode ser negativo"}), 400
-        if minimum_stock_percent < 0 or minimum_stock_percent > 100:
-            return jsonify({"error": "minimum_stock_percent deve estar entre 0 e 100"}), 400
-        if max_gap_days < 1:
-            return jsonify({"error": "max_gap_days deve ser pelo menos 1"}), 400
+        params, error = _validate_sporadic_mrp_params(data)
+        if error:
+            return error
         
         # Parâmetros avançados de otimização
         optimization_params = OptimizationParams()
@@ -922,26 +825,23 @@ def mrp_advanced():
         optimizer = MRPOptimizer(optimization_params)
         
         result = optimizer.calculate_batches_for_sporadic_demand(
-            sporadic_demand=sporadic_demand,
-            initial_stock=initial_stock,
-            leadtime_days=leadtime_days,
-            period_start_date=period_start_date,
-            period_end_date=period_end_date,
-            start_cutoff_date=start_cutoff_date,
-            end_cutoff_date=end_cutoff_date,
-            safety_margin_percent=safety_margin_percent,
-            safety_days=safety_days,
-            minimum_stock_percent=minimum_stock_percent,
-            max_gap_days=max_gap_days,
+            sporadic_demand=params['sporadic_demand'],
+            initial_stock=params['initial_stock'],
+            leadtime_days=params['leadtime_days'],
+            period_start_date=params['period_start_date'],
+            period_end_date=params['period_end_date'],
+            start_cutoff_date=params['start_cutoff_date'],
+            end_cutoff_date=params['end_cutoff_date'],
+            safety_margin_percent=params['safety_margin_percent'],
+            safety_days=params['safety_days'],
+            minimum_stock_percent=params['minimum_stock_percent'],
+            max_gap_days=params['max_gap_days'],
             ignore_safety_stock=ignore_safety_stock,
             include_extended_analytics=include_extended_analytics
         )
         
         logger.info(f"MRP Advanced concluído - {len(result['batches'])} lotes planejados")
-        
-        result_converted = convert_numpy_types(result)
-        
-        return jsonify(result_converted)
+        return jsonify(convert_numpy_types(result))
         
     except Exception as ex:
         logger.error(f"Erro no planejamento MRP avançado: {str(ex)}")
