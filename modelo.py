@@ -610,20 +610,22 @@ class ModeloAjustado:
         return self
     
     def _build_historical_by_period(self, df: pd.DataFrame) -> Dict:
-        """Constrói mapa de média histórica por período (mês, semana, dia da semana).
+        """Constrói mapa do último valor histórico por período (mês, semana, dia da semana).
         
         Usado pelo modo replicate_only para replicar dados históricos sem modelagem.
+        Usa o valor mais recente de cada período para replicação fiel.
         """
+        sorted_df = df.sort_values("ds")
         result = {}
         if self.granularity == "M":
-            grouped = df.groupby(df["ds"].dt.month)["y"].mean()
-            result = grouped.to_dict()
+            for _, row in sorted_df.iterrows():
+                result[row["ds"].month] = float(row["y"])
         elif self.granularity == "S":
-            grouped = df.groupby(df["ds"].dt.isocalendar().week.astype(int))["y"].mean()
-            result = grouped.to_dict()
+            for _, row in sorted_df.iterrows():
+                result[int(row["ds"].isocalendar()[1])] = float(row["y"])
         else:
-            grouped = df.groupby(df["ds"].dt.dayofweek)["y"].mean()
-            result = grouped.to_dict()
+            for _, row in sorted_df.iterrows():
+                result[row["ds"].weekday()] = float(row["y"])
         return result
     
     def _build_chart_data(self, item_id: int, results: List[Dict]) -> Dict:
