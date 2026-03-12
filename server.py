@@ -95,6 +95,11 @@ def predict():
         growth_factor = float(data.get("growth_factor", 1.0))
         replicate_only = bool(data.get("replicate_only", False))
         
+        forecast_model = data.get("forecast_model", "auto").lower()
+        valid_models = ("auto", "ses", "holt_linear", "holt_winters", "decomposition")
+        if forecast_model not in valid_models:
+            return jsonify({"error": f"'forecast_model' deve ser um de: {', '.join(valid_models)}"}), 400
+        
         # Ajustes específicos por mês
         month_adjustments = data.get("month_adjustments", {})
         if isinstance(month_adjustments, str):
@@ -182,6 +187,7 @@ def predict():
             confidence_factor=confidence_factor,
             growth_factor=growth_factor,
             replicate_only=replicate_only,
+            forecast_model=forecast_model,
             month_adjustments=month_adjustments,
             day_of_week_adjustments=day_of_week_adjustments,
             feriados_enabled=feriados_enabled,
@@ -412,6 +418,10 @@ def generate_html():
         modelo_temp.models[item_id] = model_data
         modelo_temp.quality_metrics[item_id] = metrics_data
         
+        chart_data = html_data_from_db.get('chart_data') if 'html_data' in data else None
+        if chart_data:
+            modelo_temp._chart_data = {item_id: chart_data}
+        
         # Determinar informações do período
         if is_quarterly and quarterly_info:
             period_name = quarterly_info.get('quarter_name', f"Q{((date.month - 1) // 3) + 1}/{date.year}")
@@ -459,8 +469,16 @@ def generate_html():
         logger.error(f"Erro ao gerar HTML: {str(ex)}")
         logger.error(traceback.format_exc())
         
-        # Tratar erros baseado na preferência do cliente
-        if request.headers.get('Accept', '').startswith('text/html') or request.get_json(force=True, silent=True, cache=False).get('return_html_direct', False):
+        try:
+            body = request.get_json(force=True, silent=True, cache=False) or {}
+            wants_html = (
+                request.headers.get('Accept', '').startswith('text/html') or
+                body.get('return_html_direct', False)
+            )
+        except Exception:
+            wants_html = False
+        
+        if wants_html:
             return f"<html><body><h1>Erro interno: {str(ex)}</h1><p>Detalhes técnicos ocultos por segurança.</p></body></html>", 500, {'Content-Type': 'text/html; charset=utf-8'}
         else:
             return jsonify({"error": f"Falha na geração de HTML: {str(ex)}"}), 500

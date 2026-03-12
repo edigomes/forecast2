@@ -6,7 +6,8 @@ import json
 from datetime import datetime
 from scipy.stats import zscore
 from feriados_brasil import FeriadosBrasil
-from holt_winters import HoltWintersModel, select_best_model
+from holt_winters import select_best_model, MODEL_DISPLAY_NAMES
+from chart_svg import generate_forecast_chart_svg
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +48,7 @@ class ModeloAjustado:
                  feriados_adjustments: Optional[Dict[str, float]] = None,
                  anos_feriados: Optional[List[int]] = None,
                  replicate_only: bool = False,
+                 forecast_model: str = "auto",
                  include_explanation: bool = False,
                  explanation_level: str = "basic",
                  explanation_language: str = "pt",
@@ -93,6 +95,7 @@ class ModeloAjustado:
         self.month_adjustments = month_adjustments or {}
         self.day_of_week_adjustments = day_of_week_adjustments or {}
         self.replicate_only = replicate_only
+        self.forecast_model = forecast_model
         self.models = {}
         
         self.include_explanation = include_explanation
@@ -507,7 +510,11 @@ class ModeloAjustado:
                 "max": df["y"].max(),
                 "baseline": baseline,
                 "last_value": df["y"].iloc[-1],
-                "_historical_by_period": historical_by_period
+                "_historical_by_period": historical_by_period,
+                "_historical_series": [
+                    {"ds": row["ds"].strftime("%Y-%m-%d"), "y": round(float(row["y"]), 2)}
+                    for _, row in df[["ds", "y"]].tail(12).iterrows()
+                ]
             }
             
             # Verificar qualidade do ajuste
@@ -565,20 +572,22 @@ class ModeloAjustado:
                 }
             }
             
-            hw_model_name, hw_model, hw_mape = select_best_model(
+            best_name, best_model, best_mape = select_best_model(
                 df.set_index("ds")["y"],
                 df["prediction"].values.tolist(),
                 freq=self.freq,
-                seasonal_periods=12 if self.granularity == "M" else 52
+                seasonal_periods=12 if self.granularity == "M" else 52,
+                force_model=self.forecast_model if self.forecast_model != "auto" else None
             )
             
-            self.models[item_id]["model_selected"] = hw_model_name
-            self.models[item_id]["hw_model"] = hw_model
-            self.quality_metrics[item_id]["model_selected"] = hw_model_name
-            if hw_model_name == 'holt_winters':
-                self.quality_metrics[item_id]["hw_mape"] = hw_mape
+            self.models[item_id]["model_selected"] = best_name
+            self.models[item_id]["hw_model"] = best_model
+            self.quality_metrics[item_id]["model_selected"] = best_name
+            if best_name != 'decomposition':
+                self.quality_metrics[item_id]["selected_model_mape"] = best_mape
             
-            logger.info(f"Modelo selecionado: {hw_model_name}")
+            display = MODEL_DISPLAY_NAMES.get(best_name, best_name)
+            logger.info(f"Modelo selecionado: {display}")
             logger.info(f"Item {item_id}: Modelo treinado com sucesso")
             return self
             
@@ -617,6 +626,33 @@ class ModeloAjustado:
             result = grouped.to_dict()
         return result
     
+    def _build_chart_data(self, item_id: int, results: List[Dict]) -> Dict:
+        """Monta chart_data combinando histórico + previsões para o gráfico SVG."""
+        model = self.models.get(item_id, {})
+        historical = model.get("_historical_series", [])
+        forecast = [
+            {
+                "ds": r["ds"],
+                "yhat": r["yhat"],
+                "yhat_lower": r.get("yhat_lower", r["yhat"]),
+                "yhat_upper": r.get("yhat_upper", r["yhat"])
+            }
+            for r in results
+        ]
+        return {"historical": historical, "forecast": forecast}
+    
+    def _inject_chart_data(self, item_id: int, results: List[Dict]) -> None:
+        """Injeta chart_data em cada _html_data dos resultados e armazena no instance."""
+        if not results:
+            return
+        chart_data = self._build_chart_data(item_id, results)
+        if not hasattr(self, '_chart_data'):
+            self._chart_data = {}
+        self._chart_data[item_id] = chart_data
+        for r in results:
+            if "_html_data" in r:
+                r["_html_data"]["chart_data"] = chart_data
+    
     def predict(self, item_id: int, start_date: str, periods: int) -> Optional[List[Dict]]:
         """Gera previsões para um item específico"""
         if item_id not in self.models:
@@ -652,11 +688,11 @@ class ModeloAjustado:
             if self.replicate_only:
                 return self._predict_replicate_only(item_id, future_dates, model)
             
-            hw_model = model.get("hw_model")
+            stat_model = model.get("hw_model")
             model_selected = model.get("model_selected", "decomposition")
-            hw_forecasts = None
-            if model_selected == "holt_winters" and hw_model is not None:
-                hw_forecasts = hw_model.predict(periods)
+            stat_forecasts = None
+            if model_selected in ("ses", "holt_linear", "holt_winters") and stat_model is not None:
+                stat_forecasts = stat_model.predict(periods)
             
             for i, date in enumerate(future_dates, start=1):
                 t_future = last_t + i
@@ -676,10 +712,10 @@ class ModeloAjustado:
                     
                 prediction = prediction * self.growth_factor
                 
-                if hw_forecasts is not None and i - 1 < len(hw_forecasts):
-                    hw_val = float(hw_forecasts.iloc[i - 1])
-                    if hw_val > 0:
-                        prediction = hw_val
+                if stat_forecasts is not None and i - 1 < len(stat_forecasts):
+                    stat_val = float(stat_forecasts.iloc[i - 1])
+                    if stat_val > 0:
+                        prediction = stat_val
                 
                 # Aplicar ajustes específicos por mês
                 month_adjustment = self.month_adjustments.get(date.month, 1.0)
@@ -765,7 +801,8 @@ class ModeloAjustado:
                 
                 results.append(result)
             
-            # Log dos resultados
+            self._inject_chart_data(item_id, results)
+            
             if results:
                 logger.info(f"Previsão gerada para {len(results)} períodos")
                 logger.info(f"Primeiro período: {results[0]['ds']} - valor: {results[0]['yhat']}")
@@ -835,6 +872,7 @@ class ModeloAjustado:
             
             results.append(result)
         
+        self._inject_chart_data(item_id, results)
         logger.info(f"Replicação simples gerada para {len(results)} períodos (growth_factor={self.growth_factor})")
         return results
     
@@ -948,6 +986,12 @@ class ModeloAjustado:
                 quarterly_results.append(result)
                 
                 logger.info(f"Trimestre {quarter_name}: {quarter_yhat:.2f} (soma de 3 meses)")
+            
+            chart_data = getattr(self, '_chart_data', {}).get(item_id)
+            if chart_data:
+                for r in quarterly_results:
+                    if "_html_data" in r:
+                        r["_html_data"]["chart_data"] = chart_data
             
             logger.info(f"Previsão trimestral gerada: {len(quarterly_results)} trimestres")
             logger.info(f"{'='*40}\n")
@@ -1068,6 +1112,12 @@ class ModeloAjustado:
                 semiannual_results.append(result)
                 
                 logger.info(f"Semestre {semester_name}: {semester_yhat:.2f} (soma de 6 meses)")
+            
+            chart_data = getattr(self, '_chart_data', {}).get(item_id)
+            if chart_data:
+                for r in semiannual_results:
+                    if "_html_data" in r:
+                        r["_html_data"]["chart_data"] = chart_data
             
             logger.info(f"Previsão semestral gerada: {len(semiannual_results)} semestres")
             logger.info(f"{'='*40}\n")
@@ -1438,6 +1488,13 @@ class ModeloAjustado:
         }
         return months_pt.get(month_num, f"Mês {month_num}")
     
+    def _get_model_display_name(self, metrics: Dict) -> str:
+        """Retorna nome legível do modelo para exibição em HTML."""
+        if self.replicate_only:
+            return "Replicação Simples"
+        selected = metrics.get('model_selected', 'decomposition')
+        return MODEL_DISPLAY_NAMES.get(selected, selected.title())
+    
     def _generate_html_summary(self, item_id: int, prediction: Dict, date: pd.Timestamp, 
                               is_quarterly: bool = False, quarterly_info: Dict = None,
                               is_semiannual: bool = False, semiannual_info: Dict = None, layout: str = "full") -> str:
@@ -1670,6 +1727,18 @@ class ModeloAjustado:
             
             html += "</ul></div>"
         
+        # Gráfico SVG
+        chart_data = getattr(self, '_chart_data', {}).get(item_id)
+        if chart_data:
+            ds_str = date.strftime("%Y-%m-%d") if hasattr(date, 'strftime') else str(date)[:10]
+            svg = generate_forecast_chart_svg(chart_data, highlight_ds=ds_str)
+            if svg:
+                html += f"""
+            <div style="margin-top: 15px; padding: 12px; background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;">
+                <div style="font-size: 11px; font-weight: bold; color: #555; margin-bottom: 8px;">Histórico vs Previsão</div>
+                {svg}
+            </div>"""
+        
         # Rodapé
         training_start = metrics['training_period']['start']
         training_end = metrics['training_period']['end']
@@ -1682,7 +1751,7 @@ class ModeloAjustado:
                         <strong>Período de treino:</strong> {training_start} a {training_end}
                     </div>
                     <div>
-                        <strong>Modo:</strong> {"Replicação Simples" if self.replicate_only else self.seasonality_mode.title()} • 
+                        <strong>Modelo:</strong> {self._get_model_display_name(metrics)} • 
                         <strong>MAPE:</strong> {metrics['mape']:.1f}% • 
                         <strong>R²:</strong> {metrics['r2']:.3f}
                     </div>
@@ -1861,12 +1930,24 @@ class ModeloAjustado:
             </div>
             """
         
-        mode_label = "Replicação" if self.replicate_only else "Modelo"
+        # Gráfico SVG (compacto)
+        chart_data = getattr(self, '_chart_data', {}).get(item_id)
+        if chart_data:
+            ds_str = date.strftime("%Y-%m-%d") if hasattr(date, 'strftime') else str(date)[:10]
+            svg = generate_forecast_chart_svg(chart_data, width=480, height=200, highlight_ds=ds_str)
+            if svg:
+                html += f"""
+            <div style="margin-top: 10px; padding: 8px; background: #fff; border: 1px solid #e0e0e0; border-radius: 4px;">
+                <div style="font-size: 9px; font-weight: bold; color: #666; margin-bottom: 4px;">Histórico vs Previsão</div>
+                {svg}
+            </div>"""
+        
+        model_label = self._get_model_display_name(metrics)
         html += f"""
             <!-- Rodapé Compacto -->
             <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #dee2e6; text-align: center;">
                 <div style="font-size: 9px; color: #6c757d;">
-                    {mode_label} • {metrics['data_points']} períodos • MAPE: {metrics['mape']:.1f}% • R²: {metrics['r2']:.2f}
+                    {model_label} • {metrics['data_points']} períodos • MAPE: {metrics['mape']:.1f}% • R²: {metrics['r2']:.2f}
                 </div>
             </div>
         </div>
@@ -2092,7 +2173,8 @@ class ModeloAjustado:
             "day_of_week_adjustments": self.day_of_week_adjustments,
             "growth_factor": self.growth_factor,
             "confidence_level": self.confidence_level,
-            "freq": self.freq
+            "freq": self.freq,
+            "model_selected": metrics.get('model_selected', 'decomposition')
         }
         
         html_data = {

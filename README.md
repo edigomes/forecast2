@@ -110,6 +110,7 @@ Gera previsões de demanda para um ou mais itens com base no histórico de venda
 | `confidence_factor`      | float   | `0.7`            | Largura dos intervalos (menor = mais estreitos) |
 | `growth_factor`          | float   | `1.0`            | Fator de crescimento global (ex: `1.05` = +5%) |
 | `replicate_only`         | bool    | `false`          | Replicar média histórica sem modelagem (só aplica `growth_factor`) |
+| `forecast_model`         | string  | `"auto"`         | Modelo de previsão: `"auto"`, `"ses"`, `"holt_linear"`, `"holt_winters"`, `"decomposition"` |
 | `month_adjustments`      | object  | `{}`             | Ajustes por mês `{1: 1.2, 12: 0.8}` (1=Jan, 12=Dez)  |
 | `day_of_week_adjustments`| object  | `{}`             | Ajustes por dia da semana `{0: 1.1}` (0=Seg) |
 | `feriados_enabled`       | bool    | `true`           | Considerar feriados brasileiros              |
@@ -385,12 +386,27 @@ Combina demanda esporádica com algoritmos avançados (EOQ, classificação ABC/
 
 ---
 
-## Funcionalidades do Motor de Previsão
+## Modelos de Previsão
+
+A API seleciona automaticamente o melhor modelo conforme a quantidade de dados (`forecast_model: "auto"`), ou permite forçar um modelo específico:
+
+| Modelo             | Mínimo de dados | Parâmetro            | Descrição                                                       |
+|--------------------|-----------------|----------------------|-----------------------------------------------------------------|
+| SES                | 3 pontos        | `"ses"`              | Simple Exponential Smoothing — sem tendência, sem sazonalidade  |
+| Holt Linear        | 5 pontos        | `"holt_linear"`      | Tendência aditiva (com/sem damping), sem sazonalidade           |
+| Holt-Winters       | 24 pontos       | `"holt_winters"`     | Tendência + sazonalidade (aditiva ou multiplicativa)            |
+| Decomposição       | 3 pontos        | `"decomposition"`    | Tendência linear + sazonalidade por médias mensais (modelo base)|
+| Auto (padrão)      | qualquer        | `"auto"`             | Testa todos os disponíveis e escolhe por menor MAPE             |
+
+Cascata automática:
+- **3-4 pontos**: SES vs decomposição
+- **5-23 pontos**: SES + Holt Linear vs decomposição
+- **24+ pontos**: SES + Holt Linear + Holt-Winters vs decomposição
+
+## Funcionalidades Adicionais de Previsão
 
 | Funcionalidade                    | Descrição                                                    |
 |-----------------------------------|--------------------------------------------------------------|
-| Decomposição clássica             | Tendência linear + sazonalidade (multiplicativa/aditiva)     |
-| Holt-Winters                      | Exponential smoothing triplo com seleção automática de modelo|
 | Detecção de sazonalidade          | Via autocorrelação (ACF) — ativada automaticamente           |
 | Detecção de outliers              | Ensemble: Z-score + IQR + MAD (voto 2/3)                    |
 | Intervalos de confiança fan-out   | Alargam conforme o horizonte de previsão                     |
