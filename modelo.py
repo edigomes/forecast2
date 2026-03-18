@@ -174,7 +174,9 @@ class ModeloAjustado:
                 outlier_indices = np.where(outliers)[0]
                 logger.info(f"Detectados {sum(outliers)} outliers (ensemble: Z-score={sum(z_outliers)}, IQR={sum(iqr_outliers)}, MAD={sum(mad_outliers)})")
                 
+                self.original_data = df.copy()
                 df_fixed = df.copy()
+                df_fixed["y"] = df_fixed["y"].astype(float)
                 
                 for idx in outlier_indices:
                     original = df["y"].iloc[idx]
@@ -185,14 +187,13 @@ class ModeloAjustado:
                     window_values = [df["y"].iloc[i] for i in range(window_start, window_end) if i != idx]
                     
                     if window_values:
-                        replacement = np.median(window_values) if self.use_robust_stats else np.mean(window_values)
+                        replacement = float(np.median(window_values) if self.use_robust_stats else np.mean(window_values))
                     else:
-                        replacement = df["y"].median()
+                        replacement = float(df["y"].median())
                     
                     logger.info(f"Outlier {idx} ({df['ds'].iloc[idx].strftime('%Y-%m-%d')}): {original:.2f} -> {replacement:.2f}")
-                    df_fixed["y"].iloc[idx] = replacement
+                    df_fixed.iloc[idx, df_fixed.columns.get_loc("y")] = replacement
                 
-                self.original_data = df.copy()
                 self._outlier_count = int(sum(outliers))
                 return df_fixed
         else:
