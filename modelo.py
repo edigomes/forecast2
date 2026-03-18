@@ -175,7 +175,6 @@ class ModeloAjustado:
                 
                 self.original_data = df.copy()
                 df_fixed = df.copy()
-                df_fixed["y"] = df_fixed["y"].astype(float)
                 
                 for idx in outlier_indices:
                     original = df["y"].iloc[idx]
