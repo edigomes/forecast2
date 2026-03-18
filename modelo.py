@@ -130,10 +130,9 @@ class ModeloAjustado:
         """Prepara os dados para modelagem"""
         logger.info(f"Preparando dados - Entradas: {len(timestamps)} timestamps, {len(demands)} valores de demanda")
         
-        # Converter para DataFrame
         df = pd.DataFrame({
             "ds": pd.to_datetime(timestamps),
-            "y": pd.to_numeric(demands, errors="coerce")
+            "y": pd.to_numeric(demands, errors="coerce").astype(float)
         }).dropna()
         
         # Remover valores negativos (não fazem sentido para demanda)
