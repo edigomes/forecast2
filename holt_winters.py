@@ -22,9 +22,20 @@ def _calculate_holdout_mape(test: pd.Series, forecast: pd.Series) -> float:
 
 
 def _prepare_series(series: pd.Series, freq: str) -> pd.Series:
-    """Prepara série para statsmodels: copia, seta freq, clipa zeros."""
+    """Prepara série para statsmodels: copia, infere freq, clipa zeros.
+    
+    Tenta usar a freq informada. Se incompatível (ex: dados end-of-month com
+    freq='MS'), infere automaticamente e usa a freq detectada.
+    """
     s = series.copy()
-    s.index = pd.DatetimeIndex(s.index, freq=freq)
+    try:
+        s.index = pd.DatetimeIndex(s.index, freq=freq)
+    except ValueError:
+        inferred = pd.infer_freq(s.index)
+        if inferred:
+            s.index = pd.DatetimeIndex(s.index, freq=inferred)
+        else:
+            s = s.asfreq(freq)
     if (s <= 0).any():
         s = s.clip(lower=0.01)
     return s
@@ -50,14 +61,14 @@ class SimpleESModel:
         if not self.can_fit(len(series)):
             return False
         
-        series = _prepare_series(series, freq)
-        holdout_size = max(1, min(len(series) // 4, 3))
-        train, test = series[:-holdout_size], series[-holdout_size:]
-        
-        if len(train) < 2:
-            return False
-        
         try:
+            series = _prepare_series(series, freq)
+            holdout_size = max(1, min(len(series) // 4, 3))
+            train, test = series[:-holdout_size], series[-holdout_size:]
+            
+            if len(train) < 2:
+                return False
+            
             model = ExponentialSmoothing(
                 train, trend=None, seasonal=None,
                 initialization_method='estimated'
@@ -111,7 +122,12 @@ class HoltLinearModel:
         if not self.can_fit(len(series)):
             return False
         
-        series = _prepare_series(series, freq)
+        try:
+            series = _prepare_series(series, freq)
+        except Exception as e:
+            logger.debug(f"Holt Linear: falha ao preparar série: {e}")
+            return False
+        
         holdout_size = max(1, min(len(series) // 4, 3))
         train, test = series[:-holdout_size], series[-holdout_size:]
         
@@ -195,7 +211,12 @@ class HoltWintersModel:
         if not self.can_fit(len(series)):
             return False
         
-        series = _prepare_series(series, freq)
+        try:
+            series = _prepare_series(series, freq)
+        except Exception as e:
+            logger.debug(f"Holt-Winters: falha ao preparar série: {e}")
+            return False
+        
         holdout_size = min(max(3, len(series) // 5), self.seasonal_periods)
         train, test = series[:-holdout_size], series[-holdout_size:]
         
@@ -322,14 +343,18 @@ def select_best_model(
     best_mape = decomp_mape
     
     for name, model in candidates:
-        success = model.fit(series, freq=freq)
-        if success:
-            mape = model.get_mape()
-            logger.info(f"  {name}: MAPE={mape:.2f}%")
-            if mape < best_mape * 0.9:
-                best_name = name
-                best_model = model
-                best_mape = mape
+        try:
+            success = model.fit(series, freq=freq)
+            if success:
+                mape = model.get_mape()
+                logger.info(f"  {name}: MAPE={mape:.2f}%")
+                if mape < best_mape * 0.9:
+                    best_name = name
+                    best_model = model
+                    best_mape = mape
+        except Exception as e:
+            logger.debug(f"  {name}: falha inesperada: {e}")
+            continue
     
     logger.info(f"Model selection: decomp={decomp_mape:.2f}% -> winner={best_name} ({best_mape:.2f}%)")
     return (best_name, best_model, best_mape)

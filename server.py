@@ -181,7 +181,7 @@ def predict():
             granularity=gran, 
             seasonality_mode=seasonality_mode,
             seasonal_smooth=seasonal_smooth,
-            outlier_threshold=2.5,
+            outlier_threshold=float(data.get("outlier_threshold", 2.5)),
             trend_window=3,
             confidence_level=confidence_level,
             confidence_factor=confidence_factor,

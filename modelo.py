@@ -572,13 +572,17 @@ class ModeloAjustado:
                 }
             }
             
-            best_name, best_model, best_mape = select_best_model(
-                df.set_index("ds")["y"],
-                df["prediction"].values.tolist(),
-                freq=self.freq,
-                seasonal_periods=12 if self.granularity == "M" else 52,
-                force_model=self.forecast_model if self.forecast_model != "auto" else None
-            )
+            try:
+                best_name, best_model, best_mape = select_best_model(
+                    df.set_index("ds")["y"],
+                    df["prediction"].values.tolist(),
+                    freq=self.freq,
+                    seasonal_periods=12 if self.granularity == "M" else 52,
+                    force_model=self.forecast_model if self.forecast_model != "auto" else None
+                )
+            except Exception as e:
+                logger.warning(f"Item {item_id}: select_best_model falhou ({e}), usando decomposição")
+                best_name, best_model, best_mape = 'decomposition', None, 0.0
             
             self.models[item_id]["model_selected"] = best_name
             self.models[item_id]["hw_model"] = best_model
