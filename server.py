@@ -591,12 +591,15 @@ def mrp_optimize():
             'daily_production_capacity', 'enable_eoq_optimization', 'enable_consolidation',
             'include_extended_analytics', 'ignore_safety_stock', 'exact_quantity_match',
             'auto_calculate_max_batch_size', 'max_batch_multiplier',
-            'force_excess_production', 'unit_value', 'leadtime_std'
+            'force_excess_production', 'unit_value', 'leadtime_std',
+            'min_stock_level'
         ]
         
         for param in optional_params:
             if param in data:
                 optimization_kwargs[param] = data[param]
+        
+        logger.info(f"MRP Optimize params: ignore_safety_stock={optimization_kwargs.get('ignore_safety_stock', 'N/A')}, min_stock_level={optimization_kwargs.get('min_stock_level', 'N/A')}, exact_quantity_match={optimization_kwargs.get('exact_quantity_match', 'N/A')}")
         
         optimizer = MRPOptimizer()
         
@@ -728,6 +731,8 @@ def mrp_sporadic():
             if param in data:
                 optimization_kwargs[param] = data[param]
         
+        min_stock_level = float(data.get('min_stock_level', 0.0))
+        
         optimizer = MRPOptimizer()
         result = optimizer.calculate_batches_for_sporadic_demand(
             sporadic_demand=params['sporadic_demand'],
@@ -741,6 +746,7 @@ def mrp_sporadic():
             safety_days=params['safety_days'],
             minimum_stock_percent=params['minimum_stock_percent'],
             max_gap_days=params['max_gap_days'],
+            min_stock_level=min_stock_level,
             **optimization_kwargs
         )
         
@@ -820,6 +826,7 @@ def mrp_advanced():
         
         ignore_safety_stock = data.get('ignore_safety_stock', False)
         include_extended_analytics = data.get('include_extended_analytics', True)
+        min_stock_level = float(data.get('min_stock_level', 0.0))
         
         # Criar otimizador MRP avançado
         optimizer = MRPOptimizer(optimization_params)
@@ -837,7 +844,8 @@ def mrp_advanced():
             minimum_stock_percent=params['minimum_stock_percent'],
             max_gap_days=params['max_gap_days'],
             ignore_safety_stock=ignore_safety_stock,
-            include_extended_analytics=include_extended_analytics
+            include_extended_analytics=include_extended_analytics,
+            min_stock_level=min_stock_level
         )
         
         logger.info(f"MRP Advanced concluído - {len(result['batches'])} lotes planejados")

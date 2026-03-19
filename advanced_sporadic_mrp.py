@@ -86,24 +86,19 @@ class AdvancedSporadicMRPPlanner:
         if not valid_demands:
             return []
         
-        # 🎯 VERIFICAÇÃO ESPECIAL: Se ignore_safety_stock=True, usar lógica simplificada
         if ignore_safety_stock:
             total_demand = sum(valid_demands.values())
-            if initial_stock >= total_demand:
-                # Estoque inicial é suficiente - retornar sem lotes
+            if initial_stock >= total_demand + absolute_minimum_stock:
                 return []
             else:
-                # Criar apenas um lote com a quantidade exata necessária
                 return self._create_exact_quantity_batch(
                     valid_demands, initial_stock, leadtime_days, start_period, end_period,
-                    start_cutoff, end_cutoff, safety_days
+                    start_cutoff, end_cutoff, safety_days, absolute_minimum_stock
                 )
         
-        # 🎯 LÓGICA CORRETA: Aplicar margem APENAS quando há déficit real
         total_demand = sum(valid_demands.values())
         
-        if initial_stock >= total_demand:
-            # Estoque suficiente para cobrir demanda - retornar sem lotes
+        if initial_stock >= total_demand + absolute_minimum_stock:
             return []
         
         # Etapa 1: Análise avançada das demandas
@@ -156,13 +151,15 @@ class AdvancedSporadicMRPPlanner:
         end_period: pd.Timestamp,
         start_cutoff: pd.Timestamp,
         end_cutoff: pd.Timestamp,
-        safety_days: int
+        safety_days: int,
+        absolute_minimum_stock: float = 0.0
     ) -> List[BatchResult]:
         """
-        Cria um lote com quantidade exata para zerar estoque quando ignore_safety_stock=True
+        Cria um lote com quantidade exata necessária quando ignore_safety_stock=True.
+        Se absolute_minimum_stock > 0, garante que o estoque residual fique acima do mínimo.
         """
         total_demand = sum(valid_demands.values())
-        deficit = total_demand - initial_stock
+        deficit = (total_demand + absolute_minimum_stock) - initial_stock
         
         if deficit <= 0:
             return []
@@ -572,25 +569,21 @@ class AdvancedSporadicMRPPlanner:
             
             total_future_demand = sum(remaining_demands)
             
-            # Para lead time zero, ser mais proativo
-            # Critério: criar lote se estoque não cobre esta demanda + pelo menos a próxima
+            min_target = demand_qty + absolute_minimum_stock
             needs_batch = False
             
-            if stock_before < demand_qty:
-                # Déficit imediato - SEMPRE criar lote
+            if stock_before < min_target:
                 needs_batch = True
-                shortage = demand_qty - stock_before
+                shortage = min_target - stock_before
             elif i < len(demand_dates) - 1:
-                # Não é a última demanda - verificar se cobre esta + próxima
                 next_demand = valid_demands[demand_dates[i + 1]]
-                if stock_before < demand_qty + (next_demand * 0.5):  # 50% da próxima como buffer
+                if stock_before < demand_qty + (next_demand * 0.5) + absolute_minimum_stock:
                     needs_batch = True
-                    shortage = (demand_qty + next_demand) - stock_before
+                    shortage = (demand_qty + next_demand + absolute_minimum_stock) - stock_before
                 else:
                     shortage = 0
             else:
-                # Última demanda - verificar apenas esta
-                shortage = max(0, demand_qty - stock_before)
+                shortage = max(0, min_target - stock_before)
                 needs_batch = shortage > 0
             
             # Se precisa de lote, criar
@@ -685,24 +678,16 @@ class AdvancedSporadicMRPPlanner:
             
             # LÓGICA SIMPLIFICADA E MAIS AGRESSIVA: Para demandas esporádicas
             
-            # Calcular déficit imediato
-            shortage = max(0, demand_qty - stock_at_demand)
+            min_target = demand_qty + absolute_minimum_stock
+            shortage = max(0, min_target - stock_at_demand)
             
-            # Para lead time curto com demandas esporádicas, ser MUITO proativo
-            # Critério: criar lote se não há estoque suficiente para esta demanda + próxima demanda
-            
-            # Calcular próxima demanda se existir
             next_demand_qty = 0
             if i < len(demand_dates) - 1:
                 next_demand_qty = valid_demands[demand_dates[i + 1]]
             
-            # Buffer baseado na próxima demanda ou 50% da atual se for a última
             buffer_needed = next_demand_qty if next_demand_qty > 0 else (demand_qty * 0.5)
             
-            # SEMPRE criar lote se:
-            # 1. Há déficit imediato, OU
-            # 2. Estoque não cobre esta demanda + uma parte significativa da próxima
-            needs_batch = (shortage > 0) or (stock_at_demand < demand_qty + (buffer_needed * 0.3))
+            needs_batch = (shortage > 0) or (stock_at_demand < min_target + (buffer_needed * 0.3))
             
             # Lógica de decisão interna (debug removido)
             
@@ -827,13 +812,10 @@ class AdvancedSporadicMRPPlanner:
                 initial_stock, valid_demands, batches, demand_date_str, start_period
             )
             
-            # Aplicar safety margin
             safety_buffer = demand_qty * (safety_margin_percent / 100.0)
-            required_stock = demand_qty + safety_buffer
+            required_stock = demand_qty + safety_buffer + absolute_minimum_stock
             
-            # Verificar se precisa de batch
             if stock_at_demand < required_stock:
-                # Calcular shortage
                 shortage = required_stock - stock_at_demand
                 
                 # 🚚 VALIDAÇÃO DE PEDIDOS EM TRÂNSITO 
@@ -1043,17 +1025,13 @@ class AdvancedSporadicMRPPlanner:
             
             if arrival_date <= end_cutoff:
                 
-                # 🎯 CORREÇÃO: Calcular déficit real primeiro
                 projected_stock = self._project_stock_to_date(
                     initial_stock, valid_demands, batches, group['primary_date'], start_period
                 )
                 
-                # Déficit real = demanda do grupo - estoque disponível
-                deficit = max(0, group_demand - projected_stock)
+                deficit = max(0, (group_demand + absolute_minimum_stock) - projected_stock)
                 
                 if deficit > 0:
-                    # Há déficit real - calcular quantidade com margem
-                    # 🎯 APLICAR SAFETY_MARGIN_PERCENT sobre o déficit
                     safety_buffer = deficit * (safety_margin_percent / 100.0) if safety_margin_percent > 0 else 0
                     batch_quantity = deficit + safety_buffer
                     

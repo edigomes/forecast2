@@ -113,10 +113,11 @@ class MRPOptimizer:
         period_end_date: str,
         start_cutoff_date: str,
         end_cutoff_date: str,
-        include_extended_analytics: bool = False,  # Novo parâmetro
-        ignore_safety_stock: bool = False,  # 🎯 NOVO: Ignorar completamente estoque de segurança
-        exact_quantity_match: bool = False,  # 🎯 NOVO: Garantir que estoque total (inicial + produzido) seja exatamente igual à demanda total
-        force_excess_production: bool = False,  # 🎯 NOVO: Forçar produção real mesmo com estoque suficiente
+        include_extended_analytics: bool = False,
+        ignore_safety_stock: bool = False,
+        exact_quantity_match: bool = False,
+        force_excess_production: bool = False,
+        min_stock_level: float = 0.0,
         **kwargs
     ) -> Dict:
         """
@@ -132,9 +133,9 @@ class MRPOptimizer:
             end_cutoff_date: Data de corte final
             include_extended_analytics: Se True, inclui analytics avançados
             ignore_safety_stock: Se True, ignora completamente estoque de segurança
-            exact_quantity_match: Se True, garante que estoque total (inicial + produzido) seja exatamente igual à demanda total, considerando o estoque inicial
-    
+            exact_quantity_match: Se True, garante que estoque total (inicial + produzido) seja exatamente igual à demanda total
             force_excess_production: Se True, força produção real mesmo com estoque suficiente (sobreprodução)
+            min_stock_level: Nível mínimo de estoque absoluto (quantidadeMinima do produto)
             **kwargs: Parâmetros adicionais que sobrescrevem os padrões
             
         Returns:
@@ -143,10 +144,10 @@ class MRPOptimizer:
         # Atualizar parâmetros com kwargs
         self._update_params(kwargs)
         
-        # 🎯 ARMAZENAR flags para usar nas estratégias
         self._ignore_safety_stock = ignore_safety_stock
         self._exact_quantity_match = exact_quantity_match
         self._force_excess_production = force_excess_production
+        self._min_stock_level = max(0.0, float(min_stock_level))
         
         # Converter datas
         start_period = pd.to_datetime(period_start_date)
@@ -812,15 +813,20 @@ class MRPOptimizer:
     ) -> float:
         """Calcula estoque de segurança com fórmula completa incluindo variabilidade do lead time.
         SS = Z * sqrt(LT * σ_d² + d_avg² * σ_LT²)
+        
+        Quando min_stock_level > 0 (estoque mínimo do produto), ele serve como piso
+        garantindo que o safety stock nunca fique abaixo desse valor absoluto.
         """
+        min_stock = getattr(self, '_min_stock_level', 0.0)
+        
         if getattr(self, '_ignore_safety_stock', False):
-            return 0.0
+            return min_stock
             
         if service_level is None:
             service_level = self.params.service_level
             
         if demand_std <= 0 or leadtime_days <= 0:
-            return 0
+            return min_stock
             
         z_score = stats.norm.ppf(service_level)
         
@@ -831,7 +837,7 @@ class MRPOptimizer:
         else:
             safety_stock = z_score * demand_std * np.sqrt(leadtime_days)
         
-        return safety_stock
+        return max(safety_stock, min_stock)
     
     def _calculate_reorder_point(
         self,
@@ -877,12 +883,11 @@ class MRPOptimizer:
                 else:
                     consumption_since_last = initial_stock - current_stock
                 
-                # Precisamos pedir
-                # 🎯 NOVO: Margem de segurança baseada no flag ignore_safety_stock
+                min_stock = getattr(self, '_min_stock_level', 0.0)
                 if getattr(self, '_ignore_safety_stock', False):
-                    quantity = period_demand - current_stock  # Sem margem de segurança
+                    quantity = period_demand - current_stock + min_stock
                 else:
-                    quantity = period_demand - current_stock + (demand_stats['mean'] * self.params.safety_days)
+                    quantity = period_demand - current_stock + (demand_stats['mean'] * self.params.safety_days) + min_stock
                 quantity = max(self.params.min_batch_size, quantity)
                 
                 if current_date >= start_cutoff:
@@ -924,13 +929,10 @@ class MRPOptimizer:
         batches = []
         current_stock = initial_stock
         
-        if getattr(self, '_ignore_safety_stock', False):
-            safety_stock = 0.0
-        else:
-            safety_stock = self._calculate_safety_stock(
-                demand_stats['std'], leadtime_days,
-                avg_demand=demand_stats['mean']
-            )
+        safety_stock = self._calculate_safety_stock(
+            demand_stats['std'], leadtime_days,
+            avg_demand=demand_stats['mean']
+        )
         
         # Usar períodos menores para lead time curto
         review_period = min(3, max(1, leadtime_days))
@@ -1032,14 +1034,10 @@ class MRPOptimizer:
         """Estratégia para lead time médio (4-14 dias)"""
         batches = []
         
-        # Para lead time médio, usar política (s,S)
-        if getattr(self, '_ignore_safety_stock', False):
-            safety_stock = 0.0
-        else:
-            safety_stock = self._calculate_safety_stock(
-                demand_stats['std'], leadtime_days,
-                avg_demand=demand_stats['mean']
-            )
+        safety_stock = self._calculate_safety_stock(
+            demand_stats['std'], leadtime_days,
+            avg_demand=demand_stats['mean']
+        )
         
         # Calcular s (ponto de reposição) e S (nível máximo)
         s = self._calculate_reorder_point(
@@ -1125,17 +1123,17 @@ class MRPOptimizer:
         total_demand = demand_df['demand'].sum()
         period_days = (demand_df.index[-1] - demand_df.index[0]).days + 1
         
-        # 🎯 NOVO: Margem de segurança baseada no flag ignore_safety_stock
+        min_stock = getattr(self, '_min_stock_level', 0.0)
         if getattr(self, '_ignore_safety_stock', False):
-            safety_margin = 0.0  # Ignorar completamente margem de segurança
+            safety_margin = min_stock
         else:
-            safety_margin = demand_stats['mean'] * leadtime_days * 0.5  # 50% do consumo do lead time
+            safety_margin = demand_stats['mean'] * leadtime_days * 0.5 + min_stock
             
         if initial_stock >= total_demand + safety_margin:
             return batches
         
-        # Calcular quando o estoque vai acabar
-        days_of_coverage = initial_stock / demand_stats['mean'] if demand_stats['mean'] > 0 else float('inf')
+        effective_stock = max(0, initial_stock - min_stock)
+        days_of_coverage = effective_stock / demand_stats['mean'] if demand_stats['mean'] > 0 else float('inf')
         stockout_date = demand_df.index[0] + pd.Timedelta(days=int(days_of_coverage))
         
         # Primeira produção deve chegar antes da ruptura
@@ -1169,14 +1167,10 @@ class MRPOptimizer:
         else:
             max_batches_extreme = base_max_batches
         
-        # 🎯 NOVO: Se exact_quantity_match for True, produzir exatamente a demanda total
         if getattr(self, '_exact_quantity_match', False):
-            # Lógica correta: produzir apenas o que falta para atingir exatamente a demanda total
-            # Se estoque inicial >= demanda total, não produzir nada
-            # Se estoque inicial < demanda total, produzir apenas o déficit
-            quantity_needed = max(0, total_demand - initial_stock)
+            quantity_needed = max(0, total_demand + min_stock - initial_stock)
         else:
-            quantity_needed = total_demand + safety_margin - initial_stock  # Comportamento original
+            quantity_needed = total_demand + safety_margin - initial_stock
         
         if quantity_needed <= 0:
             return batches
@@ -2546,12 +2540,12 @@ class MRPOptimizer:
         safety_days: int = 2,
         minimum_stock_percent: float = 0.0,
         max_gap_days: int = 999,
-        ignore_safety_stock: bool = False,  # 🎯 NOVO: Ignorar completamente estoque de segurança
+        ignore_safety_stock: bool = False,
+        min_stock_level: float = 0.0,
         **kwargs
     ) -> Dict:
         """
         Planeja lotes para atender demanda esporádica em datas específicas.
-        Versão otimizada da função PHP com algoritmos de supply chain.
         
         Args:
             sporadic_demand: Dict {"YYYY-MM-DD": quantidade específica nesta data}
@@ -2566,23 +2560,20 @@ class MRPOptimizer:
             minimum_stock_percent: % da maior demanda como estoque mínimo
             max_gap_days: Gap máximo entre lotes (999 = sem limite)
             ignore_safety_stock: Se True, ignora completamente estoque de segurança
+            min_stock_level: Nível mínimo de estoque absoluto (quantidadeMinima do insumo)
             
         Returns:
             Dict com 'batches' e 'analytics' compatível com formato PHP
         """
-        # Atualizar parâmetros com kwargs
         self._update_params(kwargs)
         
-        # 🎯 ARMAZENAR flag para usar nas estratégias
         self._ignore_safety_stock = ignore_safety_stock
+        self._min_stock_level = max(0.0, float(min_stock_level))
         
-        # 🎯 CORREÇÃO: ignore_safety_stock deve ignorar apenas ESTOQUE de segurança, não DIAS de segurança
         if ignore_safety_stock:
             safety_margin_percent = 0.0
-            # 🎯 IMPORTANTE: NÃO zerar safety_days! Eles são para antecipar demanda, não para estoque
-            # safety_days deve continuar funcionando independentemente do ignore_safety_stock
             minimum_stock_percent = 0.0
-            self._ignore_safety_stock = True  # 🎯 Flag interna para todas as funções
+            self._ignore_safety_stock = True
         else:
             self._ignore_safety_stock = False
         
@@ -2673,17 +2664,16 @@ class MRPOptimizer:
         # Análise de demanda por mês
         demand_by_month = self._group_demand_by_month(valid_demands)
         
-        # Calcular estoque mínimo absoluto
         max_demand = max(valid_demands.values()) if valid_demands else 0
-        absolute_minimum_stock = max_demand * (minimum_stock_percent / 100)
+        absolute_minimum_stock = max(
+            max_demand * (minimum_stock_percent / 100),
+            getattr(self, '_min_stock_level', 0.0)
+        )
         
-        # 🎯 VERIFICAÇÃO ESPECIAL: Se ignore_safety_stock=True, verificar se estoque inicial é suficiente
         if hasattr(self, '_ignore_safety_stock') and self._ignore_safety_stock:
             total_demand = sum(valid_demands.values())
-            if initial_stock >= total_demand:
-                # Estoque inicial é suficiente - retornar sem lotes
-                logger.debug(f"🎯 IGNORE_SAFETY_STOCK: Estoque inicial ({initial_stock}) >= demanda total ({total_demand})")
-                print("🎯 Retornando SEM LOTES - estoque suficiente")
+            if initial_stock >= total_demand + absolute_minimum_stock:
+                logger.debug(f"IGNORE_SAFETY_STOCK: Estoque inicial ({initial_stock}) >= demanda total ({total_demand}) + min_stock ({absolute_minimum_stock})")
                 
                 # Calcular analytics básicos sem lotes
                 stock_evolution = self._calculate_sporadic_stock_evolution(
@@ -3184,9 +3174,11 @@ class MRPOptimizer:
             # Verificar se precisa de lote
             stock_after_demand = projected_stock - demand_quantity
             
-            # 🎯 NOVA LÓGICA: Se ignore_safety_stock estiver ativo, só criar lote se há déficit real
             if hasattr(self, '_ignore_safety_stock') and self._ignore_safety_stock:
-                needs_batch = projected_stock < demand_quantity
+                needs_batch = (
+                    projected_stock < demand_quantity or
+                    (absolute_minimum_stock > 0 and stock_after_demand < absolute_minimum_stock)
+                )
             else:
                 needs_batch = (
                     projected_stock < demand_quantity or 
